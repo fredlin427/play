@@ -66,8 +66,9 @@ function CreatePageInner() {
   const [progress, setProgress] = useState(0);
 
   // Q&A
-  const [question, setQuestion] = useState<{field:string;question:string;options:string[]}|null>(null);
+  const [questions, setQuestions] = useState<Array<{field:string;question:string;options:string[]}>>([]);
   const [askCount, setAskCount] = useState(0);
+  const [askedFields, setAskedFields] = useState<string[]>([]);
 
   // Result
   const [result, setResult] = useState<{id?:string;content?:string;craftedPrompt:string;negativePrompt:string}|null>(null);
@@ -81,7 +82,7 @@ function CreatePageInner() {
 
   const cl = convLang || toggleLang;
 
-  useEffect(() => { chatEndRef.current?.scrollIntoView({behavior:"smooth"}); }, [msgs,question]);
+  useEffect(() => { chatEndRef.current?.scrollIntoView({behavior:"smooth"}); }, [msgs,questions]);
 
   const updateProgress = (s: DesignSpec) => {
     const filled = CRITICAL_FIELDS.filter(f=>{const v=getField(s,f);return v&&v!==""&&v!=="false"&&v!=="0"&&v!=="indoor";}).length;
@@ -112,12 +113,13 @@ function CreatePageInner() {
         setMsgs(prev=>[...prev,{role:"ai",text:data.message}]);
         updateProgress(data.spec);
 
-        // Ask first question
+        // Ask first questions
         const askLang = data.lang || convLang || dl || "en";
-        const aRes = await fetch("/api/prompt/ask", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({spec:data.spec,lang:askLang})});
+        const aRes = await fetch("/api/prompt/ask", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({spec:data.spec,lang:askLang,askedFields:[]})});
         const aData = await aRes.json();
-        setQuestion(aData);
-        setMsgs(prev=>[...prev,{role:"ai",text:aData.message}]);
+        const qs = aData.questions || [];
+        setQuestions(qs);
+        if (qs.length > 0) setMsgs(prev=>[...prev,{role:"ai",text:qs[0].message || (askLang==="zh"?"請選擇：":"Choose:")}]);
         setAskCount(1);
       }
     } catch (err) { console.error(err); }
@@ -126,25 +128,31 @@ function CreatePageInner() {
 
   // ══════════════ Answer question ══════════════
 
-  const handleAnswer = async (opt: string) => {
-    if (!question) return;
+  const handleAnswer = async (q: {field:string;question:string;options:string[]}, opt: string) => {
     setLoading(true);
     setMsgs(prev=>[...prev,{role:"user",text:opt}]);
 
-    const newSpec = setField(spec, question.field, opt);
+    const newSpec = setField(spec, q.field, opt);
     setSpec(newSpec);
     updateProgress(newSpec);
+    const newAsked = [...askedFields, q.field];
+    setAskedFields(newAsked);
+
+    // Remove this question from the list
+    const remaining = questions.filter(x => x.field !== q.field);
+    setQuestions(remaining);
 
     try {
       if (askCount >= 3 || progress >= 80) {
-        // Enough rounds — stop asking
-        setQuestion(null);
-        setMsgs(prev=>[...prev,{role:"ai",text:cl==="zh"?"好的，已收集足夠資訊！":"Got it, enough info collected!"}]);
-      } else {
-        const aRes = await fetch("/api/prompt/ask", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({spec:newSpec,lang:convLang||"en"})});
+        setQuestions([]);
+        setMsgs(prev=>[...prev,{role:"ai",text:cl==="zh"?"好的，已收集足夠資訊！":"Got enough info!"}]);
+      } else if (remaining.length === 0) {
+        // Ask next batch
+        const aRes = await fetch("/api/prompt/ask", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({spec:newSpec,lang:convLang||"en",askedFields:newAsked})});
         const aData = await aRes.json();
-        setQuestion(aData);
-        setMsgs(prev=>[...prev,{role:"ai",text:aData.message}]);
+        const qs = aData.questions || [];
+        setQuestions(qs);
+        if (qs.length > 0) setMsgs(prev=>[...prev,{role:"ai",text:qs[0].message || (cl==="zh"?"請選擇：":"Choose:")}]);
         setAskCount(prev=>prev+1);
       }
     } catch (err) { console.error(err); }
@@ -239,18 +247,18 @@ function CreatePageInner() {
                 </div>
               ))}
 
-              {/* ⭐ Question with clickable options */}
-              {question && !loading && !result && (
-                <div className="ml-1 pl-4 border-l-2 border-blue-300 space-y-2">
-                  <p className="text-sm font-semibold text-gray-800">{question.question}</p>
-                  {question.options.map((opt,idx)=>(
-                    <button key={idx} onClick={()=>handleAnswer(opt)}
+              {/* ⭐ Questions with clickable options */}
+              {questions.length > 0 && !loading && !result && questions.map((q,qi)=>(
+                <div key={qi} className="ml-1 pl-4 border-l-2 border-blue-300 space-y-2">
+                  <p className="text-sm font-semibold text-gray-800">{q.question}</p>
+                  {q.options.map((opt,idx)=>(
+                    <button key={idx} onClick={()=>handleAnswer(q,opt)}
                       className="w-full text-left text-sm px-4 py-2.5 rounded-lg border border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 transition-all shadow-sm">
                       <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-100 text-blue-700 text-xs font-bold mr-2">{idx+1}</span>{opt}
                     </button>
                   ))}
                 </div>
-              )}
+              ))}
 
               {loading && <div className="flex items-center gap-2 text-sm text-blue-600"><Loader2 className="w-4 h-4 animate-spin"/>{t("Thinking...","思考中...")}</div>}
               <div ref={chatEndRef}/>
@@ -285,7 +293,7 @@ function CreatePageInner() {
                   </Button>
                 </div>
               ) : (
-                !question && <Button onClick={handleCraft} disabled={loading} className="w-full" size="lg">{loading?<Loader2 className="w-4 h-4 animate-spin mr-2"/>:<Wand2 className="w-4 h-4 mr-2"/>}{t("Generate Prompt","✨ 生成提示詞")}</Button>
+                questions.length === 0 && <Button onClick={handleCraft} disabled={loading} className="w-full" size="lg">{loading?<Loader2 className="w-4 h-4 animate-spin mr-2"/>:<Wand2 className="w-4 h-4 mr-2"/>}{t("Generate Prompt","✨ 生成提示詞")}</Button>
               )}
             </div>
           </div>

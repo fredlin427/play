@@ -1,10 +1,8 @@
 /**
- * Prompt Helper — extract spec → ask questions → craft prompt.
+ * Prompt Helper — Professional 2D-to-3D Prompt Optimization Agent.
  *
- * Flow: user describes → extract flat fields → convert to DesignSpec
- * → LLM asks 1 question at a time for missing fields
- * → user clicks options → spec updates → repeat until ready
- * → craft 9-section prompt with hardcoded 2D constraints
+ * Flow: detect language → detect input type → extract spec →
+ * dynamic Q&A for missing fields → craft 9-section prompt.
  */
 
 import { callLLM, callLLMStructured } from "@/lib/llm";
@@ -19,10 +17,10 @@ import type { Lang } from "@/lib/i18n";
 
 export type { DesignSpec, ExtractSpecOutput, AskQuestionOutput, PromptHelperOutput };
 
-const POSITIVE_PREFIX = "single object only, isolated on plain white background, centered composition, orthographic front view, full object in frame no cropping, clean sharp silhouette, studio soft even lighting no harsh shadows, product photography style, technical render, clearly defined edges and materials, suitable for image-to-3D generation";
-const NEGATIVE_BASE = "text, watermark, logo, signature, multiple objects, cluttered scene, complex background, natural environment, outdoor, room, table, floor, wall, hands, people, animals, blur, depth of field, bokeh, motion blur, lens flare, grain, noise, low quality, distorted, deformed, extreme perspective, fisheye, wide angle, cropped, cut off, occlusion, harsh shadows, dramatic lighting, artistic lighting, creative composition";
+const POSITIVE_PREFIX = "single object only, isolated on white background, centered composition, front or 3/4 view, full object in frame, clean silhouette, studio soft lighting, product photography, technical render, clear edges and materials, image-to-3D ready";
+const NEGATIVE_BASE = "text, watermark, logo, multiple objects, complex background, blur, distortion, extreme perspective, cropped, occlusion, harsh shadows, artistic lighting";
 
-// ═══════════════ Extract spec from free text ═══════════════
+// ═══════════════ Extract ═══════════════
 
 export async function extract(userText: string, lang: Lang = "en"): Promise<{spec: DesignSpec; message: string}> {
   const result = await callLLMStructured(
@@ -33,10 +31,11 @@ export async function extract(userText: string, lang: Lang = "en"): Promise<{spe
   const d = result.data;
   return {
     spec: {
-      object: { name: d.name, type: d.type, description: userText },
-      visual: { style: d.style, material: d.material, color: d.color, texture: d.texture, finish: d.finish, edgeTreatment: d.edgeTreatment },
-      composition: { viewAngle: d.viewAngle, background: "pure white", lighting: "studio soft", renderStyle: "product photography" },
-      features: { keyFeatures: d.keyFeatures ? d.keyFeatures.split(",").map((s:string)=>s.trim()).filter(Boolean) : [], hasHoles: false, hasGrooves: false, hasMovingParts: false, isHollow: false },
+      meta: { inputType: d.inputType, assetType: d.assetType, generationGoal: d.generationGoal, style: d.style },
+      subject: { name: d.name, description: userText },
+      visual: { material: d.material, color: d.color, texture: d.texture, finish: d.finish, edgeTreatment: d.edgeTreatment },
+      structure: { mainShape: d.mainShape, details: d.details, hasHoles: false, hasGrooves: false, hasMovingParts: false, isHollow: false },
+      composition: { viewAngle: d.viewAngle, poseOrOrientation: "", background: "pure white", lighting: "studio soft" },
       dimensions: { approximateSize: d.size },
       useCase: { primaryUse: d.use, environment: "indoor" },
     },
@@ -44,21 +43,55 @@ export async function extract(userText: string, lang: Lang = "en"): Promise<{spe
   };
 }
 
-// ═══════════════ Ask ONE question for missing field ═══════════════
+// ═══════════════ Ask (1-3 questions) ═══════════════
 
-export async function ask(spec: DesignSpec, lang: Lang = "en"): Promise<AskQuestionOutput> {
-  const specSummary = `name:${spec.object.name}, material:${spec.visual.material}, style:${spec.visual.style}, color:${spec.visual.color}, size:${spec.dimensions.approximateSize}, use:${spec.useCase.primaryUse}, texture:${spec.visual.texture}, finish:${spec.visual.finish}, edge:${spec.visual.edgeTreatment}`;
+export async function ask(spec: DesignSpec, askedFields: string[], lang: Lang = "en"): Promise<AskQuestionOutput[]> {
+  const filled = [
+    spec.subject.name && `name:${spec.subject.name}`,
+    spec.meta.assetType !== "unknown" && `assetType:${spec.meta.assetType}`,
+    spec.meta.generationGoal !== "unknown" && `goal:${spec.meta.generationGoal}`,
+    spec.visual.material && `material:${spec.visual.material}`,
+    spec.meta.style && `style:${spec.meta.style}`,
+    spec.visual.color && `color:${spec.visual.color}`,
+    spec.visual.texture && `texture:${spec.visual.texture}`,
+    spec.dimensions.approximateSize && `size:${spec.dimensions.approximateSize}`,
+    spec.useCase.primaryUse && `use:${spec.useCase.primaryUse}`,
+    spec.composition.viewAngle && `view:${spec.composition.viewAngle}`,
+  ].filter(Boolean).join(", ");
 
-  const result = await callLLMStructured(
+  const asked = askedFields.length > 0 ? `\nAlready asked: ${askedFields.join(", ")}` : "";
+
+  // Use raw callLLM for flexible array output
+  const result = await callLLM(
     getPrompt("ask", lang),
-    `The user is creating: "${spec.object.name || 'something'}".\n\nCurrently filled:\n${specSummary}\n\nWhich field should we ask about next? Output the question with options.`,
-    AskQuestionSchema, ASK_FALLBACK, "ask",
-    { temperature: 0.3, maxTokens: 400 }
+    `Object: "${spec.subject.name || 'unknown'}". Asset type: ${spec.meta.assetType}. Goal: ${spec.meta.generationGoal}.\nFilled: ${filled}${asked}\n\nPick 1-3 most important missing fields and ask questions with options. Output JSON array. Match user's language.`,
+    { temperature: 0.3, maxTokens: 600 }
   );
-  return result.data;
+
+  // Parse the response — try JSON array first
+  try {
+    const cleaned = result.content.trim()
+      .replace(/```json\n?/g, "").replace(/```/g, "")
+      .replace(/,\s*]/g, "]").replace(/,\s*}/g, "}");
+    // Find array in response
+    const match = cleaned.match(/\[[\s\S]*\]/);
+    if (match) {
+      const arr = JSON.parse(match[0]);
+      if (Array.isArray(arr) && arr.length > 0) {
+        return arr.map((q: Record<string,unknown>) => ({
+          field: String(q.field || ""),
+          question: String(q.question || ""),
+          options: Array.isArray(q.options) ? q.options.map(String) : ["Yes","No","Other"],
+          message: String(q.message || ""),
+        }));
+      }
+    }
+  } catch { /* fall through */ }
+
+  return [ASK_FALLBACK];
 }
 
-// ═══════════════ Craft from complete spec ═══════════════
+// ═══════════════ Craft ═══════════════
 
 export async function craft(spec: DesignSpec, lang: Lang = "en"): Promise<PromptHelperOutput> {
   const specJson = JSON.stringify(spec, null, 2);

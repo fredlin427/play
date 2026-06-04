@@ -1,50 +1,32 @@
-/** Prompts for extract, ask, craft. All optimized for qwen2.5:3b. */
+/** Professional 2D-to-3D Prompt Optimization Agent prompts. */
 
 import type { Lang } from "@/lib/i18n";
 
-const EXTRACT = `Extract design data from user's description. Output ONLY valid JSON — no other text:
-{"name":"exact object name","type":"product|character|mechanical|jewelry|toy|food|other","style":"","material":"","color":"","texture":"","finish":"","edgeTreatment":"","viewAngle":"front","keyFeatures":"comma,separated","size":"","use":"","message":"short friendly reply matching user's language"}
+const EXTRACT = `Extract structured data from user's description. Output ONLY valid JSON:
+{"inputType":"text|image|text_with_image|existing_prompt|unknown","assetType":"character|creature|product|prop|jewelry|vehicle|robot|furniture|environment_asset|abstract_object|unknown","generationGoal":"2d_image|3d_model|2d_to_3d|blender_asset|unknown","name":"exact name","style":"...","material":"...","color":"...","texture":"...","finish":"...","edgeTreatment":"...","mainShape":"...","details":"...","viewAngle":"front|3/4|side|top|isometric","size":"...","use":"...","message":"friendly reply in user's EXACT language"}
 
-Fill EVERY field. Infer from context. Use user's EXACT words. If user says "apple", name:"apple", type:"food". If "dragon candle holder", name:"dragon candle holder", type:"product".`;
+Rules: Extract EVERYTHING you can. Use user's EXACT words. Match their language perfectly.`;
 
-const ASK = `You are helping collect design specs. Look at the current_spec to see what's already filled.
+const ASK = `You are a design consultant helping collect structured specs for 2D-to-3D generation.
 
-Your ONLY job: Pick the 1 most important EMPTY field and ask about it. Output ONLY this JSON:
-{"field":"field.path","question":"Specific question about the user's object?","options":["Option 1","Option 2","Option 3","Other"],"message":"1 short sentence in user's language"}
+Look at the current_spec. Identify the 1-3 MOST IMPORTANT missing fields.
 
-FIELD PRIORITY (pick the first empty one):
-1. visual.material - What material?
-2. visual.style - What style?
-3. useCase.primaryUse - What's it used for?
-4. visual.color - What color?
-5. dimensions.approximateSize - How big?
-6. visual.texture - What surface texture?
-7. visual.finish - Matte or glossy?
+QUESTION PRIORITY by asset type:
+- If subject/name missing → ask: "What are you creating?"
+- If assetType unknown → ask: "What kind of object is this?" with category options
+- If generationGoal unknown → ask: "What's the final use?"
+- character/creature → prioritize: pose, proportions, clothing/accessories, style
+- product/prop/jewelry → prioritize: material, shape, style, dimensions
+- robot/vehicle/hard surface → prioritize: mechanical detail level, structure, material, color
+- abstract_object → prioritize: basic geometry, structure, material
 
-CRITICAL:
-- If the spec has almost nothing filled (only name), ask about the object CATEGORY first: "What kind of object is this?" with options like ["3D-printable figurine","Decorative object","Functional product","Food replica","Jewelry/accessory","Other"]
-- Options MUST be specific to what the user described. If they said "dragon", options should include dragon-related choices.
-- message MUST be a real sentence in the user's language, NOT placeholder text.
-- If user is Chinese, EVERYTHING in Chinese. If English, English.`;
+RULES:
+- Max 3 questions per round. Each with 3-5 clickable options + "Other".
+- Questions MUST be specific to user's object. NOT generic templates.
+- Match user's EXACT language.
+- Output ONLY valid JSON: [{"field":"field.path","question":"...?","options":["A","B","C","Other"],"message":"friendly sentence in user's language"}]`;
 
-const CRAFT = `Generate 9-section prompt package from spec. Use the object's EXACT name from spec. Everything must be specific to THAT object — never generic.
-
-2D CONSTRAINTS (hardcoded, always apply):
-- Single object only, plain white background
-- Orthographic front view (or 3/4 if needed)
-- Studio soft lighting, product photography style
-- Suitable for image-to-3D generation
-
-Sections:
-## 1. Visual Goal Summary
-## 2. Positive Prompt (English — detailed, object-specific)
-## 3. Negative Prompt (English)
-## 4. 中文版 (繁體中文)
-## 5. Hunyuan / I2T3D Prompt
-## 6. Blender / 3D Structure
-## 7. Parameters
-## 8. Checklist
-## 9. Variants`;
+const CRAFT = `Generate 9-section prompt from spec. Use object's EXACT name. Positive prompt: single object, white/light grey bg, orthographic or 3/4 view, studio lighting, product photography, 3D-ready.`;
 
 const PROMPTS: Record<string, Record<Lang, string>> = {
   extract: { en: EXTRACT, zh: EXTRACT },
