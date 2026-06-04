@@ -67,7 +67,12 @@ export const ExtractSpecSchema = z.object({
   edgeTreatment: z.string(),
   mainShape: z.string(),
   details: z.string(),
+  hasHoles: z.boolean().optional().default(false),
+  hasGrooves: z.boolean().optional().default(false),
+  hasMovingParts: z.boolean().optional().default(false),
+  isHollow: z.boolean().optional().default(false),
   viewAngle: z.string(),
+  poseOrOrientation: z.string().optional().default(""),
   size: z.string(),
   use: z.string(),
   message: z.string(),
@@ -78,7 +83,8 @@ export type ExtractSpecOutput = z.infer<typeof ExtractSpecSchema>;
 export const EXTRACT_FALLBACK: ExtractSpecOutput = {
   inputType:"text", assetType:"unknown", generationGoal:"2d_to_3d",
   name:"", style:"", material:"", color:"", texture:"", finish:"", edgeTreatment:"",
-  mainShape:"", details:"", viewAngle:"three-quarter front", size:"", use:"",
+  mainShape:"", details:"", hasHoles:false, hasGrooves:false, hasMovingParts:false, isHollow:false,
+  viewAngle:"three-quarter front", poseOrOrientation:"", size:"", use:"",
   message:"",
 };
 
@@ -93,12 +99,14 @@ export const AskQuestionSchema = z.object({
 
 export type AskQuestionOutput = z.infer<typeof AskQuestionSchema>;
 
-export const ASK_FALLBACK: AskQuestionOutput = {
+export const AskQuestionArraySchema = z.array(AskQuestionSchema);
+
+export const ASK_ARRAY_FALLBACK: AskQuestionOutput[] = [{
   field: "meta.assetType",
   question: "What kind of object is this?",
   options: ["Product/Prop","Character/Creature","Mechanical/Robot","Jewelry","Furniture","Abstract","Other"],
   message: "Let me understand what you're creating.",
-};
+}];
 
 // ── Craft ──────────────────────────────────────────────────────────
 

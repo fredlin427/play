@@ -8,7 +8,7 @@
 import { callLLM, callLLMStructured } from "@/lib/llm";
 import {
   ExtractSpecSchema, EXTRACT_FALLBACK,
-  AskQuestionSchema, ASK_FALLBACK,
+  AskQuestionArraySchema, ASK_ARRAY_FALLBACK,
   PROMPT_HELPER_FALLBACK,
 } from "@/lib/schemas";
 import type { DesignSpec, ExtractSpecOutput, AskQuestionOutput, PromptHelperOutput } from "@/lib/schemas";
@@ -34,8 +34,8 @@ export async function extract(userText: string, lang: Lang = "en"): Promise<{spe
       meta: { inputType: d.inputType, assetType: d.assetType, generationGoal: d.generationGoal, style: d.style },
       subject: { name: d.name, description: userText },
       visual: { material: d.material, color: d.color, texture: d.texture, finish: d.finish, edgeTreatment: d.edgeTreatment },
-      structure: { mainShape: d.mainShape, details: d.details, hasHoles: false, hasGrooves: false, hasMovingParts: false, isHollow: false },
-      composition: { viewAngle: d.viewAngle, poseOrOrientation: "", background: "pure white", lighting: "studio soft" },
+      structure: { mainShape: d.mainShape, details: d.details, hasHoles: d.hasHoles ?? false, hasGrooves: d.hasGrooves ?? false, hasMovingParts: d.hasMovingParts ?? false, isHollow: d.isHollow ?? false },
+      composition: { viewAngle: d.viewAngle, poseOrOrientation: d.poseOrOrientation ?? "", background: "pure white", lighting: "studio soft" },
       dimensions: { approximateSize: d.size },
       useCase: { primaryUse: d.use, environment: "indoor" },
     },
@@ -61,51 +61,64 @@ export async function ask(spec: DesignSpec, askedFields: string[], lang: Lang = 
 
   const asked = askedFields.length > 0 ? `\nAlready asked: ${askedFields.join(", ")}` : "";
 
-  // Use raw callLLM for flexible array output
-  const result = await callLLM(
+  // Use callLLMStructured for proper JSON output + automatic retry on parse failure
+  const result = await callLLMStructured(
     getPrompt("ask", lang),
     `Object: "${spec.subject.name || 'unknown'}". Asset type: ${spec.meta.assetType}. Goal: ${spec.meta.generationGoal}.\nFilled: ${filled}${asked}\n\nPick 1-3 most important missing fields and ask questions with options. Output JSON array. Match user's language.`,
+    AskQuestionArraySchema, ASK_ARRAY_FALLBACK, "ask",
     { temperature: 0.3, maxTokens: 600 }
   );
 
-  // Parse the response — try JSON array first
-  try {
-    const cleaned = result.content.trim()
-      .replace(/```json\n?/g, "").replace(/```/g, "")
-      .replace(/,\s*]/g, "]").replace(/,\s*}/g, "}");
-    // Find array in response
-    const match = cleaned.match(/\[[\s\S]*\]/);
-    if (match) {
-      const arr = JSON.parse(match[0]);
-      if (Array.isArray(arr) && arr.length > 0) {
-        return arr.map((q: Record<string,unknown>) => ({
-          field: String(q.field || ""),
-          question: String(q.question || ""),
-          options: Array.isArray(q.options) ? q.options.map(String) : ["Yes","No","Other"],
-          message: String(q.message || ""),
-        }));
-      }
-    }
-  } catch { /* fall through */ }
-
-  return [ASK_FALLBACK];
+  return result.data;
 }
 
 // ═══════════════ Craft ═══════════════
 
-export async function craft(spec: DesignSpec, lang: Lang = "en"): Promise<PromptHelperOutput> {
+export async function craft(spec: DesignSpec, lang: Lang = "en", feedback?: string): Promise<PromptHelperOutput> {
   const specJson = JSON.stringify(spec, null, 2);
   const langHint = lang === "zh" ? "Explain in 繁體中文. Prompts in English." : "Explain in English.";
+  const feedbackBlock = feedback ? `\n\nUSER FEEDBACK / REVISION REQUEST:\n"${feedback}"\n\nIncorporate this feedback. Adjust the relevant sections accordingly.` : "";
   const result = await callLLM(
     getPrompt("craft", lang),
-    `SPEC:\n${specJson}\n\n${langHint}\nGenerate 9-section prompt. Positive MUST start: "${POSITIVE_PREFIX}". Negative MUST include: "${NEGATIVE_BASE}".`,
+    `SPEC:\n${specJson}\n\n${langHint}\nGenerate 9-section prompt. Positive MUST start: "${POSITIVE_PREFIX}". Negative MUST include: "${NEGATIVE_BASE}".${feedbackBlock}`,
     { temperature: 0.3, maxTokens: 2500 }
   );
   if (!result.content || result.content.length < 100) return PROMPT_HELPER_FALLBACK;
   let content = result.content; let cp = ""; let np = "";
-  const s2 = content.match(/## 2\..*?\n+([\s\S]*?)(?=\n## 3\.)/i);
-  if (s2) { cp = s2[1].trim(); if (!cp.includes(POSITIVE_PREFIX)) cp = POSITIVE_PREFIX + ", " + cp; content = content.replace(s2[0], s2[0].replace(s2[1], cp)); }
-  const s3 = content.match(/## 3\..*?\n+([\s\S]*?)(?=\n## 4\.)/i);
-  if (s3) { np = s3[1].trim(); if (!np.includes(NEGATIVE_BASE)) np = NEGATIVE_BASE + ", " + np; content = content.replace(s3[0], s3[0].replace(s3[1], np)); }
+
+  // Match sections by header TEXT (not position number) — robust to ordering variations
+  // Section 2 = Positive Prompt, Section 3 = Negative Prompt
+  const posMatch = content.match(/##\s*\d*\.?\s*Positive\s*Prompt\s*\n+([\s\S]*?)(?=\n##\s|\n#\s|$)/i);
+  const negMatch = content.match(/##\s*\d*\.?\s*Negative\s*Prompt\s*\n+([\s\S]*?)(?=\n##\s|\n#\s|$)/i);
+
+  if (posMatch) {
+    cp = posMatch[1].trim();
+    if (!cp.toLowerCase().includes(POSITIVE_PREFIX.split(",")[0].toLowerCase())) {
+      cp = POSITIVE_PREFIX + ", " + cp;
+    }
+    content = content.replace(posMatch[0], posMatch[0].replace(posMatch[1], cp));
+  }
+  if (negMatch) {
+    np = negMatch[1].trim();
+    if (!np.toLowerCase().includes(NEGATIVE_BASE.split(",")[0].toLowerCase())) {
+      np = NEGATIVE_BASE + ", " + np;
+    }
+    content = content.replace(negMatch[0], negMatch[0].replace(negMatch[1], np));
+  }
+
+  // Fallback: if headers not found by name, try position-based regex (legacy support)
+  if (!cp || !np) {
+    const s2 = content.match(/##\s*\d*\.?\s*.*?\n+([\s\S]*?)(?=\n##\s*\d|\n#\s|$)/i);
+    const s3 = content.match(/##\s*\d*\.?\s*.*?\n+([\s\S]*?)(?=\n##\s*\d|\n#\s|$)/i);
+    // Only use position-based as last resort for legacy LLM output
+    if (!cp && s2) {
+      const legacyPosMatch = content.match(/##\s*2\.?\s*.*?\n+([\s\S]*?)(?=\n##\s*3\.|\n##\s*\d|\n#\s|$)/i);
+      if (legacyPosMatch) { cp = legacyPosMatch[1].trim(); if (!cp.toLowerCase().includes(POSITIVE_PREFIX.split(",")[0].toLowerCase())) cp = POSITIVE_PREFIX + ", " + cp; content = content.replace(legacyPosMatch[0], legacyPosMatch[0].replace(legacyPosMatch[1], cp)); }
+    }
+    if (!np && s3) {
+      const legacyNegMatch = content.match(/##\s*3\.?\s*.*?\n+([\s\S]*?)(?=\n##\s*4\.|\n##\s*\d|\n#\s|$)/i);
+      if (legacyNegMatch) { np = legacyNegMatch[1].trim(); if (!np.toLowerCase().includes(NEGATIVE_BASE.split(",")[0].toLowerCase())) np = NEGATIVE_BASE + ", " + np; content = content.replace(legacyNegMatch[0], legacyNegMatch[0].replace(legacyNegMatch[1], np)); }
+    }
+  }
   return { content, craftedPrompt: cp, negativePrompt: np };
 }

@@ -353,7 +353,7 @@ function mockResponse(systemPrompt: string, userMessage: string): LLMResponse {
     content = mockDesignBrief(userMessage);
   } else if (promptLower.includes("material agent") || promptLower.includes("material recommendation")) {
     content = mockMaterial(userMessage);
-  } else if (promptLower.includes("prompt agent") || promptLower.includes("text-to-3d")) {
+  } else if (promptLower.includes("prompt agent") || promptLower.includes("text-to-3d") || promptLower.includes("prompt engineer") || promptLower.includes("9-section prompt")) {
     content = mockPrompt(userMessage);
   } else if (promptLower.includes("ticket agent") || promptLower.includes("job ticket")) {
     content = mockTicket(userMessage);
@@ -550,20 +550,53 @@ function mockMaterial(_input: string): string {
 // ── Mock: Prompt ─────────────────────────────────────────────────────
 
 function mockPrompt(_input: string): string {
-  return `1. Simple prompt:
-A medical supply organizer with compartments, rounded corners, smooth surfaces, flat base.
-
-2. Detailed prompt:
-Medical supply organizer container with rounded corners (radius 3mm), smooth wipeable surfaces, stackable design, ergonomic finger grips on each compartment, draft angles on all vertical walls for easy printing, filleted internal corners for easy cleaning, label holder slots on each compartment front, flat base for bed adhesion, minimum wall thickness 1.2mm.
-
-3. Negative prompt:
-sharp edges, thin walls below 1.2mm, overhangs greater than 45 degrees, small features under 2mm, text embossing, complex mechanical parts, hinges, moving parts, porous surfaces, rough textures, unsupported bridges.
-
-4. Notes for user:
-- Print with the flat base on the build plate
-- Use 20-25% infill for strength
-- Consider adding a brim if large flat surfaces exist
-- Sand for smooth finish if needed`;
+  return [
+    "## 1. Object Name & Summary",
+    "Medical supply organizer — a compartmentalized container for organizing clinical supplies with easy-clean surfaces.",
+    "",
+    "## 2. Positive Prompt",
+    "single object only, isolated on white background, centered composition, front or 3/4 view, full object in frame, clean silhouette, studio soft lighting, product photography, technical render, clear edges and materials, image-to-3D ready, medical supply organizer with compartments, rounded corners, smooth wipeable surfaces, stackable design, flat base, PLA material, matte finish",
+    "",
+    "## 3. Negative Prompt",
+    "text, watermark, logo, multiple objects, complex background, blur, distortion, extreme perspective, cropped, occlusion, harsh shadows, artistic lighting, sharp edges, thin walls below 1.2mm, overhangs greater than 45 degrees, small features under 2mm, text embossing, complex mechanical parts, hinges, moving parts, porous surfaces, rough textures, unsupported bridges",
+    "",
+    "## 4. Key Visual Features",
+    "- Multiple compartments of varying sizes",
+    "- Rounded corners (radius 3mm) for safety",
+    "- Ergonomic finger grips on each compartment",
+    "- Label holder slots on compartment fronts",
+    "- Clean, professional medical aesthetic",
+    "",
+    "## 5. Material & Surface Properties",
+    "- Material: PLA (primary) or PETG (alternative)",
+    "- Finish: Matte, smooth, wipeable",
+    "- Edge treatment: Filleted internal corners, rounded external edges",
+    "- Color: Light grey or white (medical standard)",
+    "",
+    "## 6. Geometric Structure",
+    "- Main shape: Rectangular prism with divided interior",
+    "- Compartment dividers: Fixed, draft-angled",
+    "- Flat base for print bed adhesion",
+    "- Minimum wall thickness: 1.2mm",
+    "- No moving parts, no hinges",
+    "",
+    "## 7. View & Composition",
+    "- Recommended view: 3/4 front view for best compartment visibility",
+    "- Centered, full object in frame with margin",
+    "- Orthographic or slight perspective",
+    "",
+    "## 8. Scale & Dimensions",
+    "- Approximate size: 200mm x 150mm x 100mm (desktop-sized)",
+    "- Fits standard FDM print volume",
+    "- Weight target: under 500g",
+    "",
+    "## 9. Generation Notes",
+    "- Print with flat base directly on build plate",
+    "- Use 20-25% infill for strength-to-weight balance",
+    "- Consider brim for large flat surfaces",
+    "- Sand post-print for smooth finish",
+    "- Recommended: 4 image variations for best I2T3D results"
+  ].join("\n");
 }
 
 // ── Mock: Ticket ─────────────────────────────────────────────────────
