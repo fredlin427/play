@@ -15,9 +15,12 @@ import { ArrowRight, Sparkles, Pencil, ImagePlus, Box, Loader2, Copy, Check, Ref
 import type { DesignSpec } from "@/lib/schemas";
 import { EMPTY_SPEC } from "@/lib/schemas";
 
-const CRITICAL_FIELDS = ["object.name","visual.material","visual.style","visual.color","dimensions.approximateSize","useCase.primaryUse","visual.texture"];
+const CRITICAL_FIELDS = ["subject.name","meta.assetType","meta.generationGoal","visual.material","visual.style","visual.color","dimensions.approximateSize","useCase.primaryUse"];
 const ALL_FIELDS = [
-  {path:"object.name",zh:"物品名",en:"Name"},
+  {path:"subject.name",zh:"物品名",en:"Name"},
+  {path:"meta.assetType",zh:"類型",en:"Type"},
+  {path:"meta.generationGoal",zh:"目標",en:"Goal"},
+  {path:"meta.style",zh:"風格",en:"Style"},
   {path:"visual.material",zh:"材質",en:"Material"},
   {path:"visual.style",zh:"風格",en:"Style"},
   {path:"visual.color",zh:"顏色",en:"Color"},
@@ -220,7 +223,7 @@ function CreatePageInner() {
         {specReady && (
           <div className="space-y-1.5">
             <div className="flex items-center justify-between text-sm">
-              <span className="font-semibold">{spec.object.name||"..."}</span>
+              <span className="font-semibold">{spec.subject.name||"..."}</span>
               <span className="text-gray-500">{progress}% · {t("Round","輪")} {askCount}/3</span>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-2.5">

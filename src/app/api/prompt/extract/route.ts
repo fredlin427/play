@@ -13,8 +13,8 @@ export async function POST(request: NextRequest) {
     const result = await extract(text, lang);
 
     // If LLM failed to extract name, at minimum use the user's text
-    if (!result.spec.object.name) {
-      result.spec.object.name = text.slice(0, 50);
+    if (!result.spec.subject.name) {
+      result.spec.subject.name = text.slice(0, 50);
       result.message = lang === "zh" ? `了解！「${text.slice(0,20)}」——請讓我再問幾個問題。` : `Got it! "${text.slice(0,30)}" — let me ask a few questions.`;
     }
 

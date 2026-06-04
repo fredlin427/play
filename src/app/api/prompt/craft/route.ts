@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
     if (!projectId || !spec) return NextResponse.json({ error: "projectId and spec required" }, { status: 400 });
 
     const designSpec = spec as DesignSpec;
-    const lang: Lang = detectLang(designSpec.object?.name || designSpec.object?.description || "");
+    const lang: Lang = detectLang(designSpec.subject?.name || designSpec.object?.description || "");
 
     const result = await craft(designSpec, lang);
 
