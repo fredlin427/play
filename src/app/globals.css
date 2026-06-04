@@ -1,0 +1,51 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-background: #ffffff;
+  --color-foreground: #111827;
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  /* Hospital / Medical theme colors */
+  --color-medical-blue: #2563eb;
+  --color-medical-blue-light: #eff6ff;
+  --color-medical-blue-dark: #1d4ed8;
+
+  --color-risk-low: #16a34a;
+  --color-risk-low-bg: #f0fdf4;
+  --color-risk-medium: #ca8a04;
+  --color-risk-medium-bg: #fefce8;
+  --color-risk-high: #dc2626;
+  --color-risk-high-bg: #fef2f2;
+}
+
+body {
+  background: #ffffff;
+  color: #111827;
+  font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+/* Smooth scrolling for the chat interface */
+.chat-scroll {
+  scroll-behavior: smooth;
+}
+
+/* Prose overrides for design brief content */
+.prose h3 {
+  color: #111827;
+  font-weight: 600;
+}
+
+.prose strong {
+  color: #111827;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
+}

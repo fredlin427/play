@@ -1,0 +1,210 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Project — general-purpose 3D printing project
+// ═══════════════════════════════════════════════════════════════════
+model Project {
+  id           String   @id @default(cuid())
+  title        String   @default("Untitled Project")
+  description  String   @default("")       // User's original description
+  status       String   @default("draft")  // draft | prompt_crafting | image_generating | image_review | model_generating | model_review | blender_processing | engineer_review | stl_ready | completed
+  currentStep  Int      @default(0)        // 0-8 tracking workflow step
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  messages          Message[]
+  fileAttachments   FileAttachment[]
+  promptVersions    PromptVersion[]
+  referenceImages   ReferenceImage[]
+  referenceModels   ReferenceModel[]
+  generatedImages   GeneratedImage[]
+  generatedModels   GeneratedModel[]
+  blenderJobs       BlenderJob[]
+  designVersions    DesignVersion[]
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Message — conversational history
+// ═══════════════════════════════════════════════════════════════════
+model Message {
+  id        String   @id @default(cuid())
+  projectId String
+  role      String   // user | assistant | system
+  content   String
+  createdAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// FileAttachment — user-uploaded reference files
+// ═══════════════════════════════════════════════════════════════════
+model FileAttachment {
+  id        String   @id @default(cuid())
+  projectId String
+  fileName  String
+  fileUrl   String   @default("")
+  fileType  String   @default("")       // reference_image | reference_model | other
+  fileSize  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ReferenceImage — user-uploaded reference image for prompt context
+// ═══════════════════════════════════════════════════════════════════
+model ReferenceImage {
+  id           String   @id @default(cuid())
+  projectId    String
+  imageUrl     String                  // Local file path
+  thumbnailUrl String   @default("")   // Smaller version for gallery
+  width        Int      @default(0)
+  height       Int      @default(0)
+  fileSize     Int      @default(0)
+  analysis     String   @default("")   // AI analysis: extracted features description
+  createdAt    DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ReferenceModel — user-uploaded STL/CAD file for reference
+// ═══════════════════════════════════════════════════════════════════
+model ReferenceModel {
+  id           String   @id @default(cuid())
+  projectId    String
+  fileUrl      String                  // Local file path
+  fileFormat   String   @default("stl") // stl | obj | step
+  fileSize     Int      @default(0)
+  thumbnailUrl String   @default("")   // Render preview
+  analysis     String   @default("")   // AI analysis of model features
+  createdAt    DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PromptVersion — tracks every prompt iteration
+// ═══════════════════════════════════════════════════════════════════
+model PromptVersion {
+  id              String   @id @default(cuid())
+  projectId       String
+  version         Int                     // 1, 2, 3...
+  userInput       String                  // What the user originally said
+  craftedPrompt   String                  // AI-optimized text-to-image prompt
+  negativePrompt  String   @default("")
+  styleNotes      String   @default("")   // Style guidance
+  sketchData      String   @default("")   // JSON: SketchPad canvas data (if user drew)
+  isApproved      Boolean  @default(false)
+  feedback        String   @default("")   // User feedback for iteration
+  clarityScore    Float    @default(0.0)  // 0.0 - 1.0 how clear the prompt is
+  createdAt       DateTime @default(now())
+
+  project          Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  generatedImages  GeneratedImage[]
+
+  @@unique([projectId, version])
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// GeneratedImage — 2D images from Hunyuan text-to-image
+// ═══════════════════════════════════════════════════════════════════
+model GeneratedImage {
+  id              String   @id @default(cuid())
+  projectId       String
+  promptVersionId String
+  imageUrl        String                  // Local file path
+  thumbnailUrl    String   @default("")   // Smaller version for gallery
+  width           Int      @default(0)
+  height          Int      @default(0)
+  fileSize        Int      @default(0)
+  isApproved      Boolean  @default(false) // User selected this for 3D generation
+  hunyuanTaskId   String   @default("")    // Hunyuan API task ID
+  createdAt       DateTime @default(now())
+
+  project         Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  promptVersion   PromptVersion @relation(fields: [promptVersionId], references: [id], onDelete: Cascade)
+  generatedModels GeneratedModel[]
+
+  @@index([projectId])
+  @@index([promptVersionId])
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// GeneratedModel — 3D models from Hunyuan image-to-3D
+// ═══════════════════════════════════════════════════════════════════
+model GeneratedModel {
+  id             String   @id @default(cuid())
+  projectId      String
+  sourceImageId  String                  // Which GeneratedImage produced this
+  modelUrl       String                  // Local file path (OBJ or GLB)
+  modelFormat    String   @default("glb") // obj | glb
+  fileSize       Int      @default(0)
+  thumbnailUrl   String   @default("")   // Render preview
+  hunyuanTaskId  String   @default("")   // Hunyuan API task ID
+  createdAt      DateTime @default(now())
+
+  project     Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sourceImage GeneratedImage  @relation(fields: [sourceImageId], references: [id], onDelete: Cascade)
+  blenderJobs  BlenderJob[]
+
+  @@index([projectId])
+  @@index([sourceImageId])
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// BlenderJob — automated mesh processing jobs
+// ═══════════════════════════════════════════════════════════════════
+model BlenderJob {
+  id            String    @id @default(cuid())
+  projectId     String
+  sourceModelId String                  // Which GeneratedModel to process
+  jobType       String    @default("auto_process") // auto_process | export_stl
+  status        String    @default("pending")  // pending | running | completed | failed
+  progress      Float     @default(0)    // 0.0 - 1.0
+  outputStlUrl  String    @default("")   // Path to final STL
+  outputStlSize Int       @default(0)
+  checks        String    @default("[]") // JSON: printability check results
+  warnings      String    @default("[]") // JSON: warning messages
+  logOutput     String    @default("")   // Blender stdout/stderr
+  errorMessage  String    @default("")
+  startedAt     DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime  @default(now())
+
+  project     Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sourceModel GeneratedModel  @relation(fields: [sourceModelId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([sourceModelId])
+  @@index([status])
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// DesignVersion — tracks STL exports
+// ═══════════════════════════════════════════════════════════════════
+model DesignVersion {
+  id          String   @id @default(cuid())
+  projectId   String
+  version     Int
+  stlFilePath String   @default("")
+  stlFileSize Int      @default(0)
+  notes       String   @default("")
+  status      String   @default("draft")  // draft | generated | approved
+  createdAt   DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, version])
+}

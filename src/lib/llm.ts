@@ -1,0 +1,705 @@
+/**
+ * LLM Integration Layer — Provider-Based Architecture
+ *
+ * Supports multiple LLM backends via the LLM_PROVIDER env variable:
+ *   - "local"  → OpenAI-compatible local endpoint (Ollama, vLLM, LM Studio, etc.)
+ *   - "mock"   → Deterministic rule-based responses (no network, no external API)
+ *
+ * PRIVACY: When LLM_PROVIDER=local, all data stays on the local network.
+ * No user messages or patient data are sent to external APIs.
+ * In production (NODE_ENV=production), raw user messages are not logged.
+ *
+ * The OpenAI SDK is used as the HTTP client for all remote providers
+ * because all supported backends implement the /v1/chat/completions API.
+ */
+
+import OpenAI from "openai";
+import type { z } from "zod";
+
+// ── Provider Types ───────────────────────────────────────────────────
+
+type LLMProvider = "local" | "mock";
+
+interface LLMConfig {
+  provider: LLMProvider;
+  baseUrl: string;
+  model: string;
+  apiKey: string;
+}
+
+// ── Config Resolution ────────────────────────────────────────────────
+
+let _config: LLMConfig | null = null;
+
+function getConfig(): LLMConfig {
+  if (_config) return _config;
+
+  const provider = (process.env.LLM_PROVIDER || "mock") as LLMProvider;
+
+  _config = {
+    provider,
+    baseUrl: process.env.LOCAL_LLM_BASE_URL || "http://localhost:11434/v1",
+    model: process.env.LOCAL_LLM_MODEL || "qwen2.5:14b",
+    apiKey: process.env.LOCAL_LLM_API_KEY || "ollama",
+  };
+
+  return _config;
+}
+
+// ── Client Cache ─────────────────────────────────────────────────────
+
+let _client: OpenAI | null = null;
+
+function getClient(): OpenAI | null {
+  const config = getConfig();
+  if (config.provider === "mock") return null;
+
+  if (_client) return _client;
+
+  _client = new OpenAI({
+    apiKey: config.apiKey,
+    baseURL: config.baseUrl,
+  });
+
+  console.log(`[LLM] Initialized: provider=${config.provider}, baseURL=${config.baseUrl}, model=${config.model}`);
+
+  return _client;
+}
+
+// ── Public API ───────────────────────────────────────────────────────
+
+export interface LLMResponse {
+  content: string;
+  model: string;
+  provider: LLMProvider;
+}
+
+export function getActiveProvider(): LLMProvider {
+  return getConfig().provider;
+}
+
+export function isMockMode(): boolean {
+  return getConfig().provider === "mock";
+}
+
+/**
+ * Main entry point: call the LLM with a system prompt and user message.
+ *
+ * @param systemPrompt  - Instructions for the model
+ * @param userMessage   - The user's input (will NOT be logged in production)
+ * @param options       - Temperature, maxTokens overrides
+ * @param structured    - If true, prompts the model for JSON-only output
+ */
+export async function callLLM(
+  systemPrompt: string,
+  userMessage: string,
+  options?: { temperature?: number; maxTokens?: number; structured?: boolean }
+): Promise<LLMResponse> {
+  const config = getConfig();
+  const client = getClient();
+
+  // Append JSON instruction for structured requests
+  const effectiveSystem = options?.structured
+    ? systemPrompt + "\n\nIMPORTANT: Return ONLY valid JSON. No markdown fences, no extra text."
+    : systemPrompt;
+
+  if (client) {
+    try {
+      const completion = await client.chat.completions.create({
+        model: config.model,
+        temperature: options?.temperature ?? 0.3,
+        max_tokens: options?.maxTokens ?? 2000,
+        messages: [
+          { role: "system", content: effectiveSystem },
+          { role: "user", content: userMessage },
+        ],
+      });
+
+      const msg = completion.choices[0]?.message;
+      const content = msg?.content
+        || ((msg as unknown as Record<string, unknown>)?.reasoning as string | undefined)
+        || "";
+      return {
+        content,
+        model: completion.model || config.model,
+        provider: "local",
+      };
+    } catch (error) {
+      console.error("[LLM] Local API call failed:", error);
+      // Fall through to mock if local is unavailable
+      if (config.provider === "local") {
+        console.warn("[LLM] Local endpoint failed, falling back to mock for this call");
+      }
+    }
+  }
+
+  // ── Mock Mode ──────────────────────────────────────────────────────
+  return mockResponse(systemPrompt, userMessage);
+}
+
+// ── Privacy-Aware Logging ────────────────────────────────────────────
+
+/**
+ * Log a user-facing message safely.
+ * In production, replaces the full message with a length-only indicator.
+ * Never logs content that might contain patient identifiers.
+ */
+export function safeLog(label: string, message: string): void {
+  const isProduction = process.env.NODE_ENV === "production";
+  if (isProduction) {
+    console.log(`[LLM] ${label}: [${message.length} chars]`);
+  } else {
+    // In dev, show truncated version — still avoids full PHI exposure in logs
+    const preview = message.length > 100 ? message.slice(0, 100) + "..." : message;
+    console.log(`[LLM] ${label}: ${preview}`);
+  }
+}
+
+// ── JSON Parsing with Repair ─────────────────────────────────────────
+
+/**
+ * Extract JSON from an LLM response string.
+ * Handles thinking models (qwen3.5) that wrap JSON in reasoning text.
+ *
+ * Strategy: find all { } blocks, try parsing each, return the last valid one.
+ * This handles cases where the model outputs "Thinking... {json} ...more thinking..."
+ */
+export function extractJson(raw: string): string {
+  const text = raw.trim();
+
+  // Remove markdown code fences first
+  let cleaned = text;
+  if (cleaned.includes("```")) {
+    cleaned = cleaned.replace(/```(?:json)?\s*\n?/gi, "").replace(/```/g, "");
+  }
+
+  // Find ALL potential JSON object blocks
+  const blocks: string[] = [];
+  let depth = 0;
+  let start = -1;
+
+  for (let i = 0; i < cleaned.length; i++) {
+    if (cleaned[i] === "{" && (i === 0 || cleaned[i - 1] !== "\\")) {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (cleaned[i] === "}" && (i === 0 || cleaned[i - 1] !== "\\")) {
+      depth--;
+      if (depth === 0 && start >= 0) {
+        blocks.push(cleaned.slice(start, i + 1));
+        start = -1;
+      }
+    }
+  }
+
+  // Try each block from LAST to FIRST (last block is usually the actual JSON)
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    let candidate = blocks[i];
+    // Repair common issues
+    candidate = candidate
+      .replace(/,\s*}/g, "}")
+      .replace(/,\s*]/g, "]")
+      .replace(/[''']/g, "'")
+      .replace(/[""]/g, '"')
+      .replace(/\n/g, " ")
+      .replace(/\t/g, " ");
+
+    try {
+      JSON.parse(candidate);
+      return candidate; // Valid JSON found
+    } catch {
+      // Try next block
+    }
+  }
+
+  // Fallback: return the full text (will fail in caller's JSON.parse, triggering retry/fallback)
+  return cleaned;
+}
+
+/**
+ * Parse and validate an LLM JSON response against a Zod schema.
+ *
+ * Strategy:
+ *   1. Extract JSON from raw text
+ *   2. Parse with JSON.parse
+ *   3. Validate with Zod schema
+ *   4. If any step fails, return the provided fallback
+ *
+ * @param raw       - Raw LLM response text
+ * @param schema    - Zod schema to validate against
+ * @param fallback  - Safe fallback value if parsing fails
+ * @param agentName - For logging purposes
+ */
+export function parseAndValidate<T>(
+  raw: string,
+  schema: z.ZodType<T>,
+  fallback: T,
+  agentName: string
+): { data: T; parseError: boolean } {
+  const json = extractJson(raw);
+
+  try {
+    const parsed = JSON.parse(json);
+    const result = schema.safeParse(parsed);
+
+    if (result.success) {
+      console.log(`[LLM] ${agentName}: JSON valid ✓`);
+      return { data: result.data, parseError: false };
+    }
+
+    console.warn(`[LLM] ${agentName}: Zod validation failed`, result.error.flatten());
+    return { data: fallback, parseError: true };
+  } catch (err) {
+    console.warn(`[LLM] ${agentName}: JSON.parse failed`, String(err));
+    return { data: fallback, parseError: true };
+  }
+}
+
+/**
+ * Call LLM with Zod validation and automatic retry on parse failure.
+ *
+ * Flow:
+ *   1. Call LLM for structured JSON output
+ *   2. Parse + validate with Zod
+ *   3. If parse fails, retry ONCE with a repair prompt
+ *   4. If retry also fails, return the safe fallback
+ */
+export async function callLLMStructured<T>(
+  systemPrompt: string,
+  userMessage: string,
+  schema: z.ZodType<T>,
+  fallback: T,
+  agentName: string,
+  options?: { temperature?: number; maxTokens?: number }
+): Promise<{ data: T; content: string; model: string; provider: LLMProvider }> {
+  // ── First attempt ──────────────────────────────────────────────────
+  const response1 = await callLLM(systemPrompt, userMessage, {
+    ...options,
+    structured: true,
+    temperature: 0.1, // Low temp for structured output
+  });
+
+  const result1 = parseAndValidate(response1.content, schema, fallback, agentName);
+
+  if (!result1.parseError) {
+    return {
+      data: result1.data,
+      content: response1.content,
+      model: response1.model,
+      provider: response1.provider,
+    };
+  }
+
+  // ── Retry with repair prompt ───────────────────────────────────────
+  console.warn(`[LLM] ${agentName}: First attempt failed JSON parse. Retrying with repair prompt...`);
+
+  const repairMessage = `Your previous response was not valid JSON. Please fix it.
+
+Previous response:
+${response1.content.slice(0, 500)}
+
+Return ONLY valid JSON that matches this structure. No markdown, no extra text.
+
+Original request:
+${userMessage.slice(0, 300)}`;
+
+  const response2 = await callLLM(systemPrompt, repairMessage, {
+    ...options,
+    structured: true,
+    temperature: 0.0,
+  });
+
+  const result2 = parseAndValidate(response2.content, schema, fallback, agentName);
+
+  if (!result2.parseError) {
+    console.log(`[LLM] ${agentName}: Repair retry succeeded ✓`);
+    return {
+      data: result2.data,
+      content: response2.content,
+      model: response2.model,
+      provider: response2.provider,
+    };
+  }
+
+  // ── Both attempts failed → safe fallback ───────────────────────────
+  console.error(`[LLM] ${agentName}: Both attempts failed. Using safe fallback.`);
+  return {
+    data: fallback,
+    content: JSON.stringify(fallback),
+    model: "fallback",
+    provider: getConfig().provider,
+  };
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// MOCK RESPONSE ENGINE
+// ══════════════════════════════════════════════════════════════════════
+
+/**
+ * Deterministic mock responses. No external API calls.
+ * All data stays in-process. No network activity.
+ */
+function mockResponse(systemPrompt: string, userMessage: string): LLMResponse {
+  const promptLower = systemPrompt.toLowerCase();
+
+  let content: string;
+
+  if (promptLower.includes("intake agent") || promptLower.includes("extract structured")) {
+    content = mockIntake(userMessage);
+  } else if (promptLower.includes("risk agent") || promptLower.includes("classify risk")) {
+    content = mockRisk(userMessage);
+  } else if (promptLower.includes("clarification agent") || promptLower.includes("missing information")) {
+    content = mockClarification(userMessage);
+  } else if (promptLower.includes("design brief")) {
+    content = mockDesignBrief(userMessage);
+  } else if (promptLower.includes("material agent") || promptLower.includes("material recommendation")) {
+    content = mockMaterial(userMessage);
+  } else if (promptLower.includes("prompt agent") || promptLower.includes("text-to-3d")) {
+    content = mockPrompt(userMessage);
+  } else if (promptLower.includes("ticket agent") || promptLower.includes("job ticket")) {
+    content = mockTicket(userMessage);
+  } else if (promptLower.includes("sketch understanding") || promptLower.includes("extract design parameters")) {
+    content = mockSketchUnderstanding(userMessage);
+  } else if (promptLower.includes("cad template") || promptLower.includes("choose the best template")) {
+    content = mockCadTemplate(userMessage);
+  } else if (promptLower.includes("revision agent") || promptLower.includes("parse the user's revision")) {
+    content = mockRevision(userMessage);
+  } else {
+    content = mockGeneral(userMessage);
+  }
+
+  return { content, model: "mock-mode", provider: "mock" };
+}
+
+// ── Mock: Intake ─────────────────────────────────────────────────────
+
+function mockIntake(input: string): string {
+  const lower = input.toLowerCase();
+
+  let dimensions = "";
+  const dimMatch = input.match(/(\d+)\s*(?:mm|cm|inch)?\s*[x×]\s*(\d+)\s*(?:mm|cm|inch)?\s*(?:[x×]\s*(\d+)\s*(?:mm|cm|inch)?)?/i);
+  if (dimMatch) {
+    const unit = lower.includes("cm") ? "cm" : "mm";
+    dimensions = dimMatch[3]
+      ? `${dimMatch[1]}${unit} × ${dimMatch[2]}${unit} × ${dimMatch[3]}${unit}`
+      : `${dimMatch[1]}${unit} × ${dimMatch[2]}${unit}`;
+  }
+
+  let productType = "custom container";
+  if (lower.includes("holder") || lower.includes("rack") || lower.includes("mount")) productType = "tool holder";
+  else if (lower.includes("surgical") || lower.includes("implant") || lower.includes("guide")) productType = "surgical guide";
+  else if (lower.includes("model") || lower.includes("anatomical")) productType = "anatomical model";
+  else if (lower.includes("tray") || lower.includes("organizer")) productType = "organizer tray";
+
+  let intendedUse = "organizing supplies";
+  if (lower.includes("surgery") || lower.includes("surgical")) intendedUse = "surgical procedure support";
+  else if (lower.includes("patient")) intendedUse = "clinical use";
+  else if (lower.includes("storage") || lower.includes("organize")) intendedUse = "storage and organization";
+  else if (lower.includes("office") || lower.includes("desk")) intendedUse = "office organization";
+
+  let numberOfItems = "";
+  const countMatch = input.match(/(\d+)\s*(?:pairs|items|pieces|tools|scissors|instruments)/i);
+  if (countMatch) numberOfItems = `${countMatch[1]} items`;
+
+  let materialRequirements = "";
+  if (lower.includes("plastic")) materialRequirements = "plastic";
+  else if (lower.includes("resin")) materialRequirements = "resin";
+  else if (lower.includes("metal")) materialRequirements = "metal-like";
+
+  let cleaningRequirement = "";
+  if (lower.includes("wipe")) cleaningRequirement = "wipeable";
+  else if (lower.includes("autoclave") || lower.includes("sterilize")) cleaningRequirement = "autoclave sterilization";
+  else if (lower.includes("wash")) cleaningRequirement = "washable";
+
+  const patientContact = lower.includes("patient") && !lower.includes("no patient") ? "yes" : "no";
+  const clinicalUse = lower.includes("clinical") || lower.includes("surgery") ? "yes" : "no";
+
+  let deadline = "";
+  const weekMatch = input.match(/(\d+)\s*(?:week|wk)/i);
+  if (weekMatch) deadline = `${weekMatch[1]} weeks`;
+  const dayMatch = input.match(/(\d+)\s*(?:day)/i);
+  if (dayMatch) deadline = `${dayMatch[1]} days`;
+
+  // Confidence
+  let filled = 0;
+  if (dimensions) filled++;
+  if (materialRequirements) filled++;
+  if (cleaningRequirement) filled++;
+  if (deadline) filled++;
+  if (numberOfItems) filled++;
+  const confidence = Math.min(0.9, 0.3 + filled * 0.12);
+
+  // Missing
+  const missingInformation: string[] = [];
+  if (!dimensions) missingInformation.push("requiredDimensions");
+  if (!materialRequirements) missingInformation.push("materialNeeds");
+  if (!cleaningRequirement) missingInformation.push("cleaningRequirement");
+  if (!numberOfItems) missingInformation.push("numberOfItems");
+  if (!deadline) missingInformation.push("deadline");
+
+  return JSON.stringify({
+    projectType: productType, intendedUse,
+    productDescription: `${productType} for ${intendedUse}`,
+    requiredDimensions: dimensions || null,
+    numberOfItems: numberOfItems || null,
+    materialNeeds: materialRequirements || null,
+    strengthRequirement: "medium",
+    flexibilityRequirement: "low",
+    heatResistanceRequirement: "up to 60°C",
+    cleaningRequirement: cleaningRequirement || null,
+    sterilisationRequirement: lower.includes("autoclave") ? "autoclave" : lower.includes("steril") ? "chemical" : null,
+    patientContact, clinicalUse,
+    deadline: deadline || null,
+    uploadedFilesMentioned: [],
+    missingInformation,
+    confidence,
+  });
+}
+
+// ── Mock: Risk ───────────────────────────────────────────────────────
+
+function mockRisk(input: string): string {
+  const lower = input.toLowerCase();
+  const isHigh = lower.includes("surgical guide") || lower.includes("cutting guide") || lower.includes("drilling guide") || lower.includes("implant") || lower.includes("operating room") || lower.includes("long-term") || lower.includes("treatment decision") || lower.includes("load-bearing");
+  const isMed = lower.includes("patient contact") || lower.includes("clinical") || lower.includes("sterilization") || lower.includes("anatomical model") || lower.includes("skin contact") || lower.includes("medical imaging");
+  if (isHigh) {
+    return JSON.stringify({ riskLevel: "high", reason: "Involves surgical equipment, implants, or operating room use.", requiresHumanReview: true, requiresClinicianApproval: true, allowedAutomation: "none" });
+  }
+  if (isMed) {
+    return JSON.stringify({ riskLevel: "medium", reason: "Patient contact or clinical use indicated.", requiresHumanReview: true, requiresClinicianApproval: true, allowedAutomation: "partial" });
+  }
+  return JSON.stringify({ riskLevel: "low", reason: "No medical risk indicators detected.", requiresHumanReview: false, requiresClinicianApproval: false, allowedAutomation: "full" });
+}
+
+// ── Mock: Clarification ──────────────────────────────────────────────
+
+function mockClarification(input: string): string {
+  const lower = input.toLowerCase();
+  const hasDim = lower.includes("mm") || lower.includes("cm") || /\d+\s*x\s*\d+/.test(lower);
+  const hasMat = /plastic|resin|pla|petg|abs|nylon/i.test(lower);
+  const hasClean = /wipe|wash|clean|autoclave|steril/i.test(lower);
+  const hasPatient = /patient|clinical|surgery/i.test(lower);
+
+  let answered = 0;
+  if (hasDim) answered++;
+  if (hasMat) answered++;
+  if (hasClean) answered++;
+  if (hasPatient) answered++;
+
+  if (answered >= 3 || lower.length > 300) {
+    return "I have enough information to proceed.";
+  }
+
+  const lines: string[] = [];
+  if (!hasDim) lines.push("1. What are the approximate dimensions? (length × width × height in mm)");
+  if (!hasMat) lines.push("2. Any preference for material type? (e.g., rigid plastic, flexible, heat-resistant)");
+  if (!hasClean) lines.push("3. How will this item be cleaned? (wipe only, washable, autoclave sterilisation)");
+  if (!hasPatient) lines.push("4. Will this item contact patients or be used in a clinical procedure?");
+  if (lines.length < 2) lines.push("5. When do you need this by?");
+
+  return lines.join("\n");
+}
+
+// ── Mock: Design Brief ───────────────────────────────────────────────
+
+function mockDesignBrief(_input: string): string {
+  return `## 3D Printing Design Brief
+
+### Project Title
+Custom Medical Supply Organizer
+
+### Summary
+A custom container for organizing medical supplies. Durable, easy-clean, efficient space use.
+
+### Requirements
+- Rounded corners for safety
+- Smooth, wipeable surfaces
+- Moderate strength, low flexibility
+- No patient contact
+
+### Constraints
+- Standard FDM print volume
+- Weight under 500g
+- Alcohol-resistant surface
+
+### Notes
+Low-risk organizational tool. Standard review applies.`;
+}
+
+// ── Mock: Material ───────────────────────────────────────────────────
+
+function mockMaterial(_input: string): string {
+  return `## Material Recommendation
+
+### Primary: PLA+
+- Excellent for organizational tools
+- Good strength-to-weight
+- Easy to print, low warping
+- Low cost
+
+### Alternatives
+- **PETG** — Better heat resistance
+- **ABS** — Higher strength, needs enclosure
+
+### Method: FDM
+- Layer: 0.2mm | Infill: 20-25% | Walls: 1.2mm (3 perimeters)
+
+### Post-Processing
+- Light sanding, optional clear coat`;
+}
+
+// ── Mock: Prompt ─────────────────────────────────────────────────────
+
+function mockPrompt(_input: string): string {
+  return `1. Simple prompt:
+A medical supply organizer with compartments, rounded corners, smooth surfaces, flat base.
+
+2. Detailed prompt:
+Medical supply organizer container with rounded corners (radius 3mm), smooth wipeable surfaces, stackable design, ergonomic finger grips on each compartment, draft angles on all vertical walls for easy printing, filleted internal corners for easy cleaning, label holder slots on each compartment front, flat base for bed adhesion, minimum wall thickness 1.2mm.
+
+3. Negative prompt:
+sharp edges, thin walls below 1.2mm, overhangs greater than 45 degrees, small features under 2mm, text embossing, complex mechanical parts, hinges, moving parts, porous surfaces, rough textures, unsupported bridges.
+
+4. Notes for user:
+- Print with the flat base on the build plate
+- Use 20-25% infill for strength
+- Consider adding a brim if large flat surfaces exist
+- Sand for smooth finish if needed`;
+}
+
+// ── Mock: Ticket ─────────────────────────────────────────────────────
+
+function mockTicket(_input: string): string {
+  const id = "3DP-" + Date.now().toString(36).toUpperCase();
+  return `## Job Ticket: ${id}
+
+### Request Summary
+Custom medical supply organizer for storage area.
+
+### User Goal
+Organize 6-8 medical supply items in a clinical storage area.
+
+### Project Type
+Custom Container
+
+### Risk Level
+Low — No patient contact, office use only.
+
+### Human Review Required
+No
+
+### Required Dimensions
+200mm × 150mm × 100mm
+
+### Functional Requirements
+- 6-8 compartments of varying sizes
+- Rounded corners for safety
+- Stackable design
+- Easy to clean surface
+
+### Material Recommendation
+PLA+ (primary) or PETG (alternative), FDM printing
+
+### Suggested Printing Method
+FDM, 0.2mm layer height, 20-25% infill, 1.2mm wall thickness
+
+### Missing Information
+- Exact compartment sizes
+- Color preference
+
+### Next Action
+Review design brief and confirm dimensions before printing.
+
+### Engineer Notes
+[To be filled by engineer]`;
+}
+
+// ── Mock: General ────────────────────────────────────────────────────
+
+function mockGeneral(_input: string): string {
+  return "I'm here to help you describe what you need for your 3D printing request. Could you tell me more about what you'd like to create and how it will be used in the hospital?";
+}
+
+// ── Mock: Sketch Understanding ──────────────────────────────────────
+
+function mockSketchUnderstanding(input: string): string {
+  const lower = input.toLowerCase();
+  let projectType = "container";
+  let w: number | null = null, d: number | null = null, h: number | null = null;
+  let comp: number | null = null;
+
+  if (lower.includes("tray")) { projectType = "tray"; if (!h) h = 30; }
+  else if (lower.includes("tool holder") || lower.includes("holder") || lower.includes("mount")) {
+    projectType = "tool-holder"; if (!w) w = 200; if (!d) d = 60; if (!h) h = 150;
+  }
+  else if (lower.includes("bracket")) { projectType = "bracket"; }
+
+  const dimMatch = input.match(/(\d+)\s*[x×]\s*(\d+)\s*(?:[x×]\s*(\d+))?/i);
+  if (dimMatch) {
+    w = parseInt(dimMatch[1]) || null;
+    d = parseInt(dimMatch[2]) || null;
+    if (dimMatch[3]) h = parseInt(dimMatch[3]) || null;
+  }
+  const compMatch = input.match(/(\d+)\s*(?:compartment|slot|section|隔層|格)/i);
+  if (compMatch) comp = parseInt(compMatch[1]);
+
+  const hasPatient = lower.includes("patient") && !lower.includes("no patient");
+  const hasClinical = lower.includes("clinical") || lower.includes("surgery") || lower.includes("surgical");
+  const isHighRisk = lower.includes("implant") || lower.includes("surgical guide") || lower.includes("drilling guide") || lower.includes("cutting guide");
+  const riskLevel = isHighRisk ? "high" : (hasPatient || hasClinical ? "medium" : "low");
+
+  return JSON.stringify({
+    projectType,
+    confidence: dimMatch ? 0.6 : 0.3,
+    units: "mm",
+    overallDimensions: { length: d, width: w, height: h },
+    features: {
+      openTop: !lower.includes("lid") && !lower.includes("cover"),
+      lid: lower.includes("lid") || lower.includes("cover"),
+      compartments: comp,
+      dividerType: comp && comp > 1 ? "fixed" : null,
+      roundedCorners: !lower.includes("sharp"),
+      cornerRadius: lower.includes("sharp") ? 0 : 3.0,
+      wallThickness: 2.0,
+      baseThickness: 2.0,
+      holes: lower.includes("hole") ? [{ location: "side", diameter: 5, purpose: "ventilation" }] : [],
+      handles: lower.includes("handle") ? [{ location: "front", type: "grip" }] : [],
+      labelArea: lower.includes("label"),
+    },
+    functionalRequirements: {
+      easyToClean: lower.includes("wipe") || lower.includes("clean"),
+      strength: "medium",
+      flexibility: "rigid",
+      heatResistance: lower.includes("heat") || lower.includes("autoclave") ? "up to 120°C" : "up to 60°C",
+      sterilisation: lower.includes("autoclave") ? "autoclave" : lower.includes("steril") ? "chemical" : "none",
+      patientContact: hasPatient,
+      clinicalUse: hasClinical,
+    },
+    missingInformation: !dimMatch ? ["dimensions"] : [],
+    clarificationQuestions: !dimMatch ? ["What are the approximate dimensions in mm?"] : [],
+    riskLevel,
+    humanReviewRequired: riskLevel !== "low",
+    canGenerateCAD: riskLevel === "low" && !!dimMatch,
+    recommendedCADTemplate: projectType,
+  });
+}
+
+// ── Mock: CAD Template ─────────────────────────────────────────────
+
+function mockCadTemplate(input: string): string {
+  const lower = input.toLowerCase();
+  let tmpl = "container";
+  if (lower.includes("tray")) tmpl = "tray";
+  else if (lower.includes("tool holder") || lower.includes("holder") || lower.includes("mount")) tmpl = "tool-holder";
+  return JSON.stringify({ template: tmpl, reason: `Matched by keyword: ${tmpl}`, supported: true, fallbackNote: "" });
+}
+
+// ── Mock: Revision ─────────────────────────────────────────────────
+
+function mockRevision(_input: string): string {
+  return JSON.stringify({
+    changes: [{ action: "set_dimensions", target: "height", value: 70, reason: "User requested taller container" }],
+    summary: "Increased height from 60mm to 70mm.",
+    needsClarification: false,
+    clarificationQuestion: "",
+  });
+}
