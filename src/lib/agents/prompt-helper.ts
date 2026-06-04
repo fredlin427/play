@@ -1,79 +1,89 @@
 /**
- * Prompt Helper — single-turn with hardcoded 2D constraints.
- *
- * Hardcoded prefix/suffix are ALWAYS prepended/appended to the positive prompt.
- * This guarantees single-object, white background, technical product shot.
+ * Prompt Helper — structured spec extraction + craft.
  */
 
-import { callLLM } from "@/lib/llm";
-import { PROMPT_HELPER_FALLBACK } from "@/lib/schemas";
-import type { PromptHelperOutput } from "@/lib/schemas";
+import { callLLM, callLLMStructured } from "@/lib/llm";
+import { ExtractSpecSchema, EXTRACT_FALLBACK, PROMPT_HELPER_FALLBACK } from "@/lib/schemas";
+import type { DesignSpec, ExtractSpecOutput, PromptHelperOutput } from "@/lib/schemas";
 import { getPrompt } from "@/lib/agents/prompts";
 import type { Lang } from "@/lib/i18n";
 
-export type { PromptHelperOutput };
+export type { DesignSpec, ExtractSpecOutput, PromptHelperOutput };
 
 // ═══════════════ HARDCODED 2D CONSTRAINTS ═══════════════
-// These are ALWAYS injected into the positive prompt.
-// The LLM cannot override them.
 
-const POSITIVE_PREFIX = "single object only, isolated on plain white background, centered composition, orthographic front view, full object completely in frame with no cropping, clean sharp silhouette, studio soft even lighting with no harsh shadows, product photography style, technical render, clearly defined edges and materials, suitable for image-to-3D generation";
+const POSITIVE_PREFIX = "single object only, isolated on plain white background, centered composition, orthographic front view, full object in frame no cropping, clean sharp silhouette, studio soft even lighting no harsh shadows, product photography style, technical render, clearly defined edges and materials, suitable for image-to-3D generation";
 
-const POSITIVE_SUFFIX = "white background, product shot, technical render, 3D-generation-ready";
+const NEGATIVE_BASE = "text, watermark, logo, signature, multiple objects, cluttered scene, complex background, natural environment, outdoor, room, table, floor, wall, hands, people, animals, blur, depth of field, bokeh, motion blur, lens flare, grain, noise, low quality, distorted, deformed, extreme perspective, fisheye, wide angle, cropped, cut off, occlusion, harsh shadows, dramatic lighting, artistic lighting, creative composition";
 
-const NEGATIVE_BASE = "text, watermark, logo, signature, multiple objects, cluttered scene, complex background, natural environment, outdoor, room, table, floor, wall, hands, people, animals, blur, depth of field, bokeh, motion blur, lens flare, grain, noise, low quality, distorted, deformed, extreme perspective, fisheye, wide angle, cropped, cut off, occlusion, shadows on background, harsh shadows, dramatic lighting, artistic lighting, creative composition";
+// ═══════════════ Extract spec from free text ═══════════════
+
+export async function extractSpec(
+  userText: string,
+  lang: Lang = "en"
+): Promise<{spec: DesignSpec; message: string}> {
+  const systemPrompt = getPrompt("extract", lang);
+  const result = await callLLMStructured(
+    systemPrompt, userText,
+    ExtractSpecSchema, EXTRACT_FALLBACK,
+    "extract",
+    { temperature: 0.2, maxTokens: 1000 }
+  );
+
+  const d = result.data;
+  // Flat → DesignSpec
+  const spec: DesignSpec = {
+    object: { name: d.name, type: d.type, description: userText },
+    visual: { style: d.style, material: d.material, color: d.color, texture: d.texture, finish: d.finish, edgeTreatment: d.edgeTreatment },
+    composition: { viewAngle: d.viewAngle, background: "pure white", lighting: "studio soft", renderStyle: "product photography" },
+    features: { keyFeatures: d.keyFeatures ? d.keyFeatures.split(",").map((s:string)=>s.trim()).filter(Boolean) : [], hasHoles: false, hasGrooves: false, hasMovingParts: false, isHollow: false },
+    dimensions: { approximateSize: d.size },
+    useCase: { primaryUse: d.use, environment: "indoor" },
+  };
+  return { spec, message: d.message };
+}
+
+// ═══════════════ Craft from complete spec ═══════════════
 
 export async function craft(
-  userDescription: string,
+  spec: DesignSpec,
   lang: Lang = "en"
 ): Promise<PromptHelperOutput> {
   const systemPrompt = getPrompt("craft", lang);
-  const langHint = lang === "zh"
-    ? "\n\n[LANGUAGE: Explain in 繁體中文. Prompts in English.]"
-    : "\n\n[LANGUAGE: Explain in English. Prompts in English.]";
+  const specJson = JSON.stringify(spec, null, 2);
+  const langHint = lang === "zh" ? "Explain in 繁體中文. Prompts in English." : "Explain in English. Prompts in English.";
 
   const result = await callLLM(
     systemPrompt,
-    `Object to generate prompt for: "${userDescription}"${langHint}
-
-IMPORTANT: The positive prompt MUST start with: "${POSITIVE_PREFIX}"
-And MUST end with: "${POSITIVE_SUFFIX}"
-The negative prompt MUST include: "${NEGATIVE_BASE}"`,
+    `DESIGN SPEC:\n${specJson}\n\n${langHint}\nGenerate the 9-section prompt package. Positive prompt MUST start with: "${POSITIVE_PREFIX}". Negative prompt MUST include: "${NEGATIVE_BASE}".`,
     { temperature: 0.3, maxTokens: 2500 }
   );
 
   if (!result.content || result.content.length < 100) return PROMPT_HELPER_FALLBACK;
 
-  // ═══ POST-PROCESS: Ensure hardcoded constraints are present ═══
   let content = result.content;
+  let craftedPrompt = "";
+  let negativePrompt = "";
 
-  // Fix section 2: ensure positive prompt has the hardcoded prefix
-  const section2Match = content.match(/(## 2\..*?Positive Prompt.*?\n)([\s\S]*?)(?=\n## 3\.)/i);
-  if (section2Match) {
-    let promptText = section2Match[2].trim();
-    // Remove "I will create..." prefix if present
-    promptText = promptText.replace(/^I will create.*?\n/i, "");
-    // Ensure prefix
-    if (!promptText.includes(POSITIVE_PREFIX)) {
-      promptText = POSITIVE_PREFIX + ", " + promptText;
+  // Extract section 2
+  const s2 = content.match(/## 2\..*?\n+([\s\S]*?)(?=\n## 3\.)/i);
+  if (s2) {
+    craftedPrompt = s2[1].trim();
+    if (!craftedPrompt.includes(POSITIVE_PREFIX)) {
+      craftedPrompt = POSITIVE_PREFIX + ", " + craftedPrompt;
     }
-    // Ensure suffix
-    if (!promptText.includes(POSITIVE_SUFFIX)) {
-      promptText = promptText + ", " + POSITIVE_SUFFIX;
-    }
-    // Replace the section
-    content = content.replace(section2Match[0], section2Match[1] + promptText + "\n");
+    content = content.replace(s2[0], s2[0].replace(s2[1], craftedPrompt));
   }
 
-  // Fix section 3: ensure negative prompt has the base
-  const section3Match = content.match(/(## 3\..*?Negative Prompt.*?\n)([\s\S]*?)(?=\n## 4\.)/i);
-  if (section3Match) {
-    let negText = section3Match[2].trim();
-    if (!negText.includes(NEGATIVE_BASE)) {
-      negText = NEGATIVE_BASE + ", " + negText;
+  // Extract section 3
+  const s3 = content.match(/## 3\..*?\n+([\s\S]*?)(?=\n## 4\.)/i);
+  if (s3) {
+    negativePrompt = s3[1].trim();
+    if (!negativePrompt.includes(NEGATIVE_BASE)) {
+      negativePrompt = NEGATIVE_BASE + ", " + negativePrompt;
     }
-    content = content.replace(section3Match[0], section3Match[1] + negText + "\n");
+    content = content.replace(s3[0], s3[0].replace(s3[1], negativePrompt));
   }
 
-  return { content };
+  return { content, craftedPrompt, negativePrompt };
 }
