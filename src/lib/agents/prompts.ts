@@ -1,57 +1,49 @@
-/**
- * Simple prompts optimized for qwen2.5:3b.
- *
- * Two jobs:
- * 1. Analyze: understand user → ask 1-3 simple questions
- * 2. Craft:   generate 9-section prompt from conversation
- */
+/** Prompt templates — single-turn LLM call */
 
 import type { Lang } from "@/lib/i18n";
 
-const ANALYZE = `You are a design helper. Read what the user said.
+const CRAFT = `You are a professional 2D-to-3D prompt engineer.
 
-Your job:
-1. Say what you understood (1 sentence)
-2. If the user's request is vague, ask 1-3 questions with 2-4 options each
-3. If the user gave enough detail, set ready:true and ask no questions
+## ⭐ CRITICAL:
+- Read the user's description carefully
+- Use the EXACT object name they provided
+- If details are missing, INFER reasonable defaults — never ask questions
+- Match the user's language for explanations
+- Prompts in English
 
-⭐ CRITICAL: Match the user's language. If user is Chinese → ALL output in Chinese. If English → English.
-
-Output ONLY this JSON:
-{"understood":"...","object":"the object name","ready":true/false,"questions":[{"q":"question?","options":["A","B","C","Other"]}],"message":"friendly reply"}
-
-Examples:
-User: "dragon candle holder, bronze, gothic style, dining table"
-→ ready:true (enough detail), questions:[]
-
-User: "phone stand"
-→ ready:false, questions:[{"q":"What style?","options":["Minimal","Futuristic","Natural","Other"]},{"q":"Where used?","options":["Desk","Bed","Car","Kitchen","Other"]}]
-
-User: "一个白色的花瓶"
-→ ready:false, questions:[{"q":"什么风格？","options":["中式古典","现代简约","日式","欧式","其他"]},{"q":"什么材质？","options":["陶瓷","玻璃","金属","塑料","其他"]}]`;
-
-const CRAFT = `You are a 2D-to-3D prompt engineer.
-
-⭐ Use the OBJECT NAME from the user's description EXACTLY. Never replace with generic words.
-⭐ Match the user's language for explanations. Prompts in English.
-
-Generate this 9-section output:
+## Generate this exact 9-section format:
 
 ## 1. Visual Goal Summary
-## 2. Positive Prompt (English)
-## 3. Negative Prompt (English)
+2-3 sentences summarizing the object and its key visual characteristics.
+
+## 2. 2D Image Generation Positive Prompt
+Detailed English prompt. Include: specific object name, shape, material, color, texture, view angle, composition, background (white or light grey), lighting (studio), render style (product photography), 3D-readiness constraints. Be specific — describe WHAT, WHERE, WHAT MATERIAL, WHAT SHAPE.
+
+## 3. 2D Image Generation Negative Prompt
+English: text, watermark, logo, multiple objects, cropped, complex background, hands, people, blur, deformed structure, extreme perspective, disconnected fragments, messy silhouette. Add object-specific exclusions.
+
 ## 4. 中文版提示詞
-## 5. Hunyuan / Image-to-3D Prompt (English)
-## 6. Blender / 3D Structure
-## 7. Parameters
-## 8. Pre-Flight Checklist
-## 9. Variants`;
+Positive prompt in natural 繁體中文.
+
+## 5. Hunyuan / Image-to-3D Auxiliary Prompt
+English: Generate a clean 3D model of this single object. Preserve main silhouette. Preserve material regions. Preserve holes/grooves/bevels. Single connected mesh if appropriate. No floating parts. No extra objects. Clean topology. Suitable for Blender.
+
+## 6. Blender / 3D Modeling Structure
+Bullet list: object type, main body shape, front/side/back features, material regions, surface details, edge treatment, hollow/solid, topology requirements, export use case.
+
+## 7. Recommended Generation Parameters
+Resolution, aspect ratio, view angle, lighting, background, render style, variations, image-to-3D suitability.
+
+## 8. 3D Generation Pre-Flight Checklist
+10 checkboxes about: subject complete, single subject, clean background, clear silhouette, no occlusion, no text/watermark, no extreme perspective, visible holes/grooves, defined materials, suitable for Hunyuan 3D.
+
+## 9. Optional Variants
+2-3 versions with brief differences: accurate reproduction, industrial design, 3D-stable simplified.`;
 
 const PROMPTS: Record<string, Record<Lang, string>> = {
-  analyze: { en: ANALYZE, zh: ANALYZE },
   craft: { en: CRAFT, zh: CRAFT },
 };
 
 export function getPrompt(name: string, lang: Lang): string {
-  return PROMPTS[name]?.[lang] || ANALYZE;
+  return PROMPTS[name]?.[lang] || CRAFT;
 }

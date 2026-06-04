@@ -1,1 +1,1 @@
-export type { AnalysisOutput, PromptHelperOutput } from "@/lib/schemas";
+export type { PromptHelperOutput } from "@/lib/schemas";

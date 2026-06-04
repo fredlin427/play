@@ -1,145 +1,60 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { LangProvider, useLang } from "@/lib/lang-context";
-import { detectLang } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import { SketchPad } from "@/components/create/SketchPad";
 import { ReferenceImageUploader } from "@/components/create/ReferenceImageUploader";
 import { ReferenceModelUploader } from "@/components/create/ReferenceModelUploader";
-import { ArrowRight, Sparkles, Pencil, ImagePlus, Box, Loader2, Copy, Check, MessageSquare, Send, RefreshCw, Lightbulb, Wand2 } from "lucide-react";
-
-interface Question { q: string; options: string[] }
-type InputMode = "text" | "sketch" | "image" | "model";
-
-const MODES: Array<{key:InputMode;icon:typeof Sparkles;en:string;zh:string}> = [
-  {key:"text",icon:Sparkles,en:"Text",zh:"文字"},{key:"sketch",icon:Pencil,en:"Sketch",zh:"畫畫"},
-  {key:"image",icon:ImagePlus,en:"Image",zh:"圖片"},{key:"model",icon:Box,en:"3D File",zh:"3D檔案"},
-];
+import { ArrowRight, Sparkles, Pencil, ImagePlus, Box, Loader2, Copy, Check, RefreshCw, Wand2 } from "lucide-react";
 
 function CreatePageInner() {
   const router = useRouter();
-  const { lang: toggleLang, setLang, t } = useLang();
-  const chatEndRef = useRef<HTMLDivElement>(null);
+  const { lang, setLang, t } = useLang();
 
-  const [mode, setMode] = useState<InputMode>("text");
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [pid, setPid] = useState<string|null>(null);
-
-  // Conversation
-  const [msgs, setMsgs] = useState<Array<{role:"user"|"ai";text:string}>>([]);
-  const [convLang, setConvLang] = useState<"zh"|"en"|null>(null);
-
-  // Q&A state
-  const [round, setRound] = useState(0);
-  const [objectName, setObjectName] = useState("");
-  const [understood, setUnderstood] = useState("");
-  const [questions, setQuestions] = useState<Question[]>([]);
-  const [ready, setReady] = useState(false);
-  const [customInput, setCustomInput] = useState("");
-  const [answers, setAnswers] = useState<string[]>([]);
-
-  // Result
   const [result, setResult] = useState<{id?:string;content?:string;craftedPrompt:string;negativePrompt:string}|null>(null);
   const [copied, setCopied] = useState(false);
   const [genLoading, setGenLoading] = useState(false);
-
-  // Sketch/Upload
-  const [sketchDataUrl, setSketchDataUrl] = useState<string|null>(null);
+  const [feedback, setFeedback] = useState("");
+  const [mode, setMode] = useState<"text"|"sketch"|"image"|"model">("text");
   const [sketchNotes, setSketchNotes] = useState("");
 
-  useEffect(() => { chatEndRef.current?.scrollIntoView({behavior:"smooth"}); }, [msgs,questions]);
-
-  // ══════════════ API calls ══════════════
-
-  const callAnalyze = async (text: string) => {
+  const handleGenerate = async () => {
+    if (!input.trim()) return;
     setLoading(true);
-    setMsgs(prev => [...prev, {role:"user",text}]);
-
     try {
       let id = pid;
-      if (!id) { const r = await fetch("/api/projects",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:text.slice(0,80),description:text})}); id=(await r.json()).id; setPid(id); }
+      if (!id) { const r = await fetch("/api/projects",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:input.slice(0,80),description:input})}); id=(await r.json()).id; setPid(id); }
 
-      const dLang = detectLang(text);
-      if (!convLang) setConvLang(dLang);
-      const cl = dLang || convLang || "en";
+      const desc = mode==="sketch" ? `[Sketch notes]: ${sketchNotes}\n[Description]: ${input}` : input;
 
-      const body: Record<string,unknown> = {projectId:id, userMessage:text};
-      if (sketchDataUrl&&mode==="sketch") body.sketchDescription = "User drew sketch. "+sketchNotes;
-
-      const res = await fetch("/api/prompt/analyze", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
-      const data = await res.json();
-
-      setMsgs(prev => [...prev, {role:"ai",text:data.message}]);
-      setUnderstood(data.understood);
-      setObjectName(data.object);
-      setReady(data.ready);
-      setQuestions(data.questions||[]);
-      setRound(prev => prev+1);
-
-      // Auto-craft if ready and already answered some questions
-      if (data.ready && round >= 1 && id) {
-        await callCraft(id, data.object, cl);
-      }
-    } catch (err) { console.error(err); }
-    finally { setLoading(false); }
-  };
-
-  const callCraft = async (id: string, objName: string, cl: string) => {
-    setLoading(true);
-    try {
-      const summary = answers.join("; ") || objName;
-      const res = await fetch("/api/prompt/craft", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:id,objectName:objName,summary})});
+      const res = await fetch("/api/prompt/craft", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:id,description:desc})});
       const data = await res.json();
       setResult(data.promptVersion);
-      setMsgs(prev => [...prev, {role:"ai",text:data.assistantMessage}]);
-      setQuestions([]); setReady(false);
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
-  };
-
-  // ══════════════ Handlers ══════════════
-
-  const handleStart = async () => {
-    const text = sketchNotes || input;
-    if (!text.trim()) return;
-    await callAnalyze(text.trim());
-  };
-
-  const handleOption = async (q: Question, opt: string) => {
-    setQuestions([]);
-    setAnswers(prev => [...prev, `${q.q}: ${opt}`]);
-    await callAnalyze(opt);
-  };
-
-  const handleCustom = async () => {
-    if (!customInput.trim()) return;
-    const text = customInput.trim();
-    setCustomInput("");
-    setAnswers(prev => [...prev, text]);
-    await callAnalyze(text);
   };
 
   const handleIterate = async () => {
-    if (!customInput.trim() || !pid) return;
-    const text = customInput.trim();
-    setCustomInput("");
-    setMsgs(prev => [...prev, {role:"user",text}]);
+    if (!feedback.trim()||!pid) return;
     setLoading(true);
     try {
-      const res = await fetch("/api/prompt/craft", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:pid,objectName,summary:answers.join("; ")+`; feedback: ${text}`})});
+      const desc = `[Original]: ${input}\n[Feedback]: ${feedback}`;
+      const res = await fetch("/api/prompt/craft", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:pid,description:desc})});
       const data = await res.json();
       setResult(data.promptVersion);
-      setMsgs(prev => [...prev, {role:"ai",text:data.assistantMessage}]);
+      setFeedback("");
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
   };
 
-  const handleGenerate = async () => {
+  const handleGenImages = async () => {
     if (!pid||!result) return;
     setGenLoading(true);
     try {
@@ -152,133 +67,78 @@ function CreatePageInner() {
     finally { setGenLoading(false); }
   };
 
-  // ══════════════ Helpers ══════════════
-  const cl = convLang || toggleLang;
-
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-4 py-3 flex items-center gap-4">
           <Button variant="ghost" size="sm" onClick={()=>router.push("/")}>← {t("Back","返回")}</Button>
-          <h1 className="text-lg font-semibold">{t("Design Consultation","設計諮詢")}</h1>
+          <h1 className="text-lg font-semibold">{t("Prompt Generator","提示詞生成器")}</h1>
           <div className="flex-1"/>
-          <Button variant="ghost" size="sm" onClick={()=>setLang(toggleLang==="zh"?"en":"zh")}>{toggleLang==="zh"?"EN":"中文"}</Button>
+          <Button variant="ghost" size="sm" onClick={()=>setLang(lang==="zh"?"en":"zh")}>{lang==="zh"?"EN":"中文"}</Button>
         </div>
       </header>
 
       <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
-        {/* Progress */}
-        {objectName && (
-          <div className="flex items-center gap-3 text-sm">
-            <span className="font-semibold text-gray-900">{objectName}</span>
-            <span className="text-gray-400">·</span>
-            <span className="text-gray-500">{t("Round","第")} {round}/2</span>
-            {answers.length > 0 && <span className="text-gray-400">·</span>}
-            {answers.length > 0 && <span className="text-green-600 text-xs">{answers.length} {t("answered","已答")}</span>}
-            {ready && <span className="text-blue-600 text-xs font-medium ml-auto">{t("Ready to craft!","可以生成！")}</span>}
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* ═══ Main ═══ */}
-          <div className="lg:col-span-2 space-y-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* ═══ LEFT: Input ═══ */}
+          <div className="space-y-4">
             {/* Mode tabs */}
             <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-              {MODES.map(m=>(<button key={m.key} onClick={()=>setMode(m.key)} className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${mode===m.key?"bg-white text-blue-700 shadow-sm":"text-gray-600 hover:text-gray-900"}`}><m.icon className="w-3.5 h-3.5"/><span className="hidden sm:inline">{toggleLang==="zh"?m.zh:m.en}</span></button>))}
+              {[
+                {key:"text" as const,icon:Sparkles,zh:"文字",en:"Text"},
+                {key:"sketch" as const,icon:Pencil,zh:"畫畫",en:"Sketch"},
+                {key:"image" as const,icon:ImagePlus,zh:"圖片",en:"Image"},
+                {key:"model" as const,icon:Box,zh:"3D檔案",en:"3D File"},
+              ].map(m=>(<button key={m.key} onClick={()=>setMode(m.key)} className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${mode===m.key?"bg-white text-blue-700 shadow-sm":"text-gray-600 hover:text-gray-900"}`}><m.icon className="w-3.5 h-3.5"/><span className="hidden sm:inline">{lang==="zh"?m.zh:m.en}</span></button>))}
             </div>
-            {mode==="sketch"&&<><SketchPad onSave={setSketchDataUrl}/><Textarea value={sketchNotes} onChange={e=>setSketchNotes(e.target.value)} placeholder={t("Notes...","備註...")} rows={1} className="resize-none text-sm"/></>}
+
+            {mode==="sketch"&&<><SketchPad onSave={()=>{}}/><Textarea value={sketchNotes} onChange={e=>setSketchNotes(e.target.value)} placeholder={t("Notes...","備註...")} rows={2} className="resize-none text-sm"/></>}
             {mode==="image"&&<ReferenceImageUploader projectId={pid} onUpload={()=>{}}/>}
             {mode==="model"&&<ReferenceModelUploader projectId={pid} onUpload={()=>{}}/>}
 
-            {/* Chat */}
-            <div className="space-y-3 max-h-[350px] overflow-y-auto">
-              {msgs.map((m,i)=>(
-                <div key={i} className={`flex ${m.role==="user"?"justify-end":"justify-start"}`}>
-                  <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm ${m.role==="user"?"bg-blue-600 text-white rounded-br-md":"bg-white border text-gray-800 rounded-bl-md shadow-sm"}`}>{m.text}</div>
-                </div>
-              ))}
-
-              {/* Questions */}
-              {questions.length > 0 && !loading && !result && (
-                <div className="ml-1 pl-4 border-l-2 border-blue-300 space-y-3">
-                  {questions.map((q,i)=>(
-                    <div key={i} className="space-y-1.5">
-                      <p className="text-sm font-semibold text-gray-800">{q.q}</p>
-                      {q.options.map((opt,j)=>(
-                        <button key={j} onClick={()=>handleOption(q,opt)}
-                          className="w-full text-left text-sm px-4 py-2.5 rounded-lg border border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 transition-all shadow-sm">
-                          <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-100 text-blue-700 text-xs font-bold mr-2">{j+1}</span>{opt}
-                        </button>
-                      ))}
-                    </div>
-                  ))}
-                  <button onClick={()=>setCustomInput(cl==="zh"?"自己輸入...":"Type my own...")}
-                    className="w-full text-left text-sm px-4 py-2.5 rounded-lg border border-dashed border-gray-300 text-gray-500 hover:border-blue-300 hover:text-blue-600 hover:bg-blue-50 transition-all">
-                    <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-gray-100 text-gray-500 text-xs font-bold mr-2">✎</span>{t("Or type...","或輸入...")}
-                  </button>
-                </div>
+            <Textarea
+              value={input}
+              onChange={e=>setInput(e.target.value)}
+              placeholder={t(
+                "Describe your object in detail — the more specific, the better the prompt.\n\nInclude: what it is, shape, material, color, texture, style, size, where it's used, any special features...\n\nExamples:\n• A 3-section adjustable phone stand, white matte plastic, minimal style, anti-slip base, for desk use, 10-15cm tall\n• A dragon-shaped candle holder in cast bronze, gothic style, coiled around a standard tea light, for dining table",
+                "詳細描述您的物品 — 越具體，提示詞越好。\n\n包含：是什麼、形狀、材質、顏色、紋理、風格、大小、使用場景、特殊功能...\n\n例如：\n• 3節可調節手機支架，白色啞光塑膠，簡約風格，防滑底座，桌面使用，10-15cm高\n• 龍形蠟燭台，青銅鑄造，哥特風格，環繞標準茶蠟，餐桌使用"
               )}
+              rows={6} className="resize-none text-sm"
+            />
 
-              {loading && <div className="flex items-center gap-2 text-sm text-blue-600"><Loader2 className="w-4 h-4 animate-spin"/>{t("Thinking...","思考中...")}</div>}
-              <div ref={chatEndRef}/>
-            </div>
-
-            {/* Input */}
-            <div className="space-y-2">
-              {!objectName ? (
-                <>
-                  {(mode==="text"||mode==="image"||mode==="model")&&(
-                    <Textarea value={input} onChange={e=>setInput(e.target.value)}
-                      placeholder={t("Describe what you want to create...","描述您想創建的物品...")} rows={3} className="resize-none text-sm"
-                      onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();handleStart();}}}/>
-                  )}
-                  <Button onClick={handleStart} disabled={loading||(!input.trim()&&!sketchNotes.trim())} className="w-full" size="lg">
-                    {loading?<Loader2 className="w-4 h-4 animate-spin mr-2"/>:<MessageSquare className="w-4 h-4 mr-2"/>}
-                    {t("Start Design Consultation","開始設計諮詢")}
-                  </Button>
-                </>
-              ) : customInput ? (
-                <div className="flex gap-2">
-                  <Textarea autoFocus value={customInput} onChange={e=>setCustomInput(e.target.value)} placeholder={t("Your answer...","您的回答...")} rows={1} className="resize-none text-sm flex-1"
-                    onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();handleCustom();}}}/>
-                  <Button size="sm" onClick={handleCustom} disabled={!customInput.trim()}><Send className="w-3.5 h-3.5"/></Button>
-                </div>
-              ) : result ? (
+            {!result ? (
+              <Button onClick={handleGenerate} disabled={loading||!input.trim()} className="w-full" size="lg">
+                {loading?<Loader2 className="w-4 h-4 animate-spin mr-2"/>:<Wand2 className="w-4 h-4 mr-2"/>}
+                {t("Generate Prompt","生成提示詞")}
+              </Button>
+            ) : (
+              <div className="space-y-2">
                 <div className="flex gap-2">
                   <div className="flex-1 flex gap-1">
-                    <Textarea value={customInput} onChange={e=>setCustomInput(e.target.value)} placeholder={t("Want changes?","想修改？")} rows={1} className="resize-none text-sm"
+                    <Textarea value={feedback} onChange={e=>setFeedback(e.target.value)}
+                      placeholder={t("Want changes? Describe what to adjust...","想修改？描述要調整什麼...")} rows={1} className="resize-none text-sm"
                       onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();handleIterate();}}}/>
-                    <Button size="sm" variant="outline" onClick={handleIterate} disabled={!customInput.trim()||loading}>
+                    <Button size="sm" variant="outline" onClick={handleIterate} disabled={!feedback.trim()||loading}>
                       {loading?<Loader2 className="w-3.5 h-3.5 animate-spin"/>:<RefreshCw className="w-3.5 h-3.5"/>}
                     </Button>
                   </div>
-                  <Button onClick={handleGenerate} disabled={genLoading} className="shrink-0">
-                    {genLoading?<Loader2 className="w-4 h-4 animate-spin mr-1"/>:<ArrowRight className="w-4 h-4 mr-1"/>}{t("Generate","生成")}
+                  <Button onClick={handleGenImages} disabled={genLoading} className="shrink-0">
+                    {genLoading?<Loader2 className="w-4 h-4 animate-spin mr-1"/>:<ArrowRight className="w-4 h-4 mr-1"/>}{t("Generate 2D","生成2D")}
                   </Button>
                 </div>
-              ) : (
-                <Button onClick={()=>pid&&callCraft(pid,objectName,cl)} disabled={loading} className="w-full" size="lg">
-                  {loading?<Loader2 className="w-4 h-4 animate-spin mr-2"/>:<Wand2 className="w-4 h-4 mr-2"/>}
-                  {t("Craft My Prompt!","✨ 生成我的提示詞！")}
-                </Button>
-              )}
-            </div>
-          </div>
-
-          {/* ═══ Right ═══ */}
-          <div className="space-y-4">
-            {understood && !result && (
-              <Card className="border-blue-200 bg-blue-50">
-                <CardContent className="p-4">
-                  <CardTitle className="text-sm mb-1 flex items-center gap-2"><Lightbulb className="w-4 h-4 text-blue-600"/>{t("I understand:","理解：")}</CardTitle>
-                  <p className="text-sm text-blue-800 font-medium">{understood}</p>
-                </CardContent>
-              </Card>
+              </div>
             )}
 
-            {result && (
+            <p className="text-xs text-gray-400 text-center">
+              {t("Tip: Be specific! Instead of 'a phone stand', say 'a 3-section adjustable phone stand, white matte plastic, minimal style, anti-slip base, 10-15cm tall, for desk use'","提示：越具體越好！與其說「手機支架」，不如說「3節可調節手機支架，白色啞光塑膠，簡約風格，防滑底座，10-15cm高，桌面使用」")}
+            </p>
+          </div>
+
+          {/* ═══ RIGHT: Result ═══ */}
+          <div>
+            {result ? (
               <Card>
-                <CardContent className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
+                <CardContent className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
                   <div className="flex items-center justify-between sticky top-0 bg-white pb-2 border-b">
                     <CardTitle className="text-sm"><Sparkles className="w-4 h-4 text-blue-600 inline mr-1"/>{t("Prompt Package","提示詞方案")}</CardTitle>
                     <Button variant="ghost" size="sm" onClick={()=>{navigator.clipboard.writeText(result.content||result.craftedPrompt);setCopied(true);setTimeout(()=>setCopied(false),2000);}}>
@@ -293,12 +153,10 @@ function CreatePageInner() {
                       .replace(/\n\n/g,'<br/><br/>')}}/>
                 </CardContent>
               </Card>
-            )}
-
-            {!objectName && (
-              <div className="flex flex-col items-center justify-center text-center py-16 text-gray-400">
-                <MessageSquare className="w-14 h-14 mb-4 opacity-20"/>
-                <p className="text-sm">{t("Describe your idea → AI asks questions → get your prompt!","描述想法→AI提問→獲得提示詞！")}</p>
+            ) : (
+              <div className="flex flex-col items-center justify-center text-center py-24 text-gray-300">
+                <Wand2 className="w-16 h-16 mb-4 opacity-20"/>
+                <p className="text-sm">{t("Describe your object on the left → click Generate","在左側描述物品 → 點擊生成")}</p>
               </div>
             )}
           </div>

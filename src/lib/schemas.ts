@@ -1,32 +1,9 @@
 /**
- * Simple schemas for qwen2.5:3b — minimal JSON, maximum reliability.
+ * Minimal schemas — single-turn LLM call.
+ * Frontend collects basic info, LLM generates prompt.
  */
 
 import { z } from "zod";
-
-export const AnalysisOutputSchema = z.object({
-  understood: z.string(),
-  object: z.string(),
-  ready: z.boolean(),
-  questions: z.array(z.object({
-    q: z.string(),
-    options: z.array(z.string()),
-  })),
-  message: z.string(),
-});
-
-export type AnalysisOutput = z.infer<typeof AnalysisOutputSchema>;
-
-export const ANALYSIS_FALLBACK: AnalysisOutput = {
-  understood: "custom object",
-  object: "custom object",
-  ready: false,
-  questions: [
-    { q: "What's the main purpose?", options: ["Decoration", "Tool/utility", "Toy/model", "Prototype", "Other"] },
-    { q: "What style?", options: ["Minimal", "Industrial", "Artistic", "Natural", "Futuristic"] },
-  ],
-  message: "Tell me more about what you want to create!",
-};
 
 export interface PromptHelperOutput {
   content: string;
