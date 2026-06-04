@@ -3,53 +3,41 @@ import { analyze } from "@/lib/agents/prompt-helper";
 import { prisma } from "@/lib/prisma";
 import { detectLang } from "@/lib/i18n";
 import type { Lang } from "@/lib/i18n";
-import type { DesignSpec } from "@/lib/schemas";
-import { EMPTY_SPEC } from "@/lib/schemas";
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json() || {};
-    const { projectId, userMessage, currentSpec, sketchDescription, referenceImageAnalyses, referenceModelAnalyses } = body;
-
+    const { projectId, userMessage, history } = await request.json() || {};
     if (!projectId || !userMessage) {
       return NextResponse.json({ error: "projectId and userMessage required" }, { status: 400 });
     }
 
-    // Build full message with multimodal context
-    let fullMessage = userMessage;
-    if (sketchDescription) fullMessage += `\n[Sketch]: ${sketchDescription}`;
-    if (referenceImageAnalyses?.length) fullMessage += `\n[Reference images uploaded]`;
-    if (referenceModelAnalyses?.length) fullMessage += `\n[Reference 3D models uploaded]`;
-
-    // Detect language from user's ACTUAL text (not field keys)
     const lang: Lang = detectLang(userMessage);
 
-    // Run LLM — passes current spec, returns updated spec + next questions
-    const spec: DesignSpec = currentSpec || EMPTY_SPEC;
-    const result = await analyze(fullMessage, spec, lang);
+    // Load conversation history for context
+    let historyText = history || "";
+    if (!historyText) {
+      const msgs = await prisma.message.findMany({ where: { projectId }, orderBy: { createdAt: "asc" }, select: { role: true, content: true } });
+      historyText = msgs.map((m: {role:string;content:string}) => `${m.role}: ${m.content}`).join("\n");
+    }
 
-    // Save messages
+    const result = await analyze(userMessage, historyText, lang);
+
     await prisma.message.create({ data: { projectId, role: "user", content: userMessage } });
-    await prisma.message.create({ data: { projectId, role: "assistant", content: result.assistantMessage } });
+    await prisma.message.create({ data: { projectId, role: "assistant", content: result.message } });
 
     return NextResponse.json({
-      spec: result.spec,
-      nextQuestions: result.nextQuestions,
-      totalFields: result.totalFields,
-      filledFields: result.filledFields,
-      readyToCraft: result.readyToCraft,
-      assistantMessage: result.assistantMessage,
+      understood: result.understood,
+      object: result.object,
+      ready: result.ready,
+      questions: result.questions,
+      message: result.message,
     });
   } catch (error) {
-    console.error("[Analyze API] Error:", error);
+    console.error("[Analyze] Error:", error);
     return NextResponse.json({
-      spec: EMPTY_SPEC,
-      nextQuestions: [
-        { path:"object.name", question:"What are you creating?", options:["Functional tool","Decorative piece","Prototype","Replacement part","Other"] },
-        { path:"visual.style", question:"What style?", options:["Minimal","Industrial","Artistic","Organic","Futuristic"] },
-      ],
-      totalFields: 12, filledFields: 0, readyToCraft: false,
-      assistantMessage: "Let me understand what you want to create!",
+      understood: "custom object", object: "custom object", ready: false,
+      questions: [{ q: "What are you creating?", options: ["Tool", "Decoration", "Toy", "Prototype", "Other"] }],
+      message: "Tell me more!",
     });
   }
 }
