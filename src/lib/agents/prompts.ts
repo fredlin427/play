@@ -1,43 +1,33 @@
-/**
- * Prompt templates.
- * 1. extract — LLM extracts structured DesignSpec from free text
- * 2. craft   — LLM generates 9-section prompt from complete spec
- */
+/** Prompts: extract (flat fields) + ask (1 question) + craft (9-section) */
 
 import type { Lang } from "@/lib/i18n";
 
-const EXTRACT = `Extract structured design data from the user's description. Output ONLY valid JSON with these flat fields:
+const EXTRACT = `Extract design data from user's description. Output ONLY valid JSON:
+{"name":"object name","type":"product|character|mechanical|jewelry|toy|other","style":"...","material":"...","color":"...","texture":"...","finish":"...","edgeTreatment":"...","viewAngle":"front","keyFeatures":"comma, separated","size":"...","use":"...","message":"friendly reply in user's language"}
 
-{"name":"object name","type":"product|character|mechanical|jewelry|toy|other","style":"...","material":"...","color":"...","texture":"...","finish":"...","edgeTreatment":"...","viewAngle":"front|3/4|isometric|side|top","keyFeatures":"comma, separated, list","size":"...","use":"...","message":"friendly reply"}
+Rules: Fill EVERY field. Use user's EXACT words. Match their language.`;
+
+const ASK = `You are collecting structured design data. The user has already provided some info (see current_spec below).
+
+Your job: pick the MOST IMPORTANT missing field and ask ONE question about it with 3-5 clickable options.
+
+Output ONLY valid JSON:
+{"field":"visual.material","question":"What material?","options":["Matte plastic","Glossy resin","Metal","Wood","Other"],"message":"friendly reply in user's language"}
 
 Rules:
-- Fill EVERY field. If not specified, infer a reasonable default.
-- Use the user's EXACT words. "3-section adjustable phone stand" → name:"3-section adjustable phone stand"
-- type: "product" for most items. "character" for figurines/toys. "mechanical" for tools/machines.
-- keyFeatures is a comma-separated string, not an array. E.g. "3-section, adjustable, anti-slip"
-- Match user's language in message field`;
+- Pick 1 field only. The most critical unfilled one.
+- Options MUST be specific to the user's object (not generic templates)
+- Last option always "Other" for custom input
+- Match the user's language EXACTLY
+- Priority: material > style > color > size > use > texture > finish > edge
 
-const CRAFT = `Generate a 9-section prompt package from the structured spec below.
+CRITICAL FIELDS to check (in order): visual.material, visual.style, visual.color, dimensions.approximateSize, useCase.primaryUse, visual.texture`;
 
-## 2D IMAGE CONSTRAINTS (NON-NEGOTIABLE):
-- SINGLE object only on plain white background
-- Orthographic front view, full object in frame
-- Studio soft lighting, product photography style
-- Clean silhouette, no occlusion, no artistic effects
-- Suitable for image-to-3D generation
-
-## 1. Visual Goal Summary
-## 2. Positive Prompt (English — object-specific, detailed)
-## 3. Negative Prompt (English)
-## 4. 中文版 (繁體中文)
-## 5. Hunyuan / I2T3D Prompt (English)
-## 6. Blender / 3D Structure
-## 7. Parameters
-## 8. Checklist (10 items)
-## 9. Variants`;
+const CRAFT = `Generate 9-section prompt from spec. Use object's EXACT name. Positive prompt: single object, white bg, orthographic, studio lighting, product photography, 3D-ready. Prompts in English, explanations in user's language.`;
 
 const PROMPTS: Record<string, Record<Lang, string>> = {
   extract: { en: EXTRACT, zh: EXTRACT },
+  ask: { en: ASK, zh: ASK },
   craft: { en: CRAFT, zh: CRAFT },
 };
 

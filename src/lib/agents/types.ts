@@ -1,1 +1,1 @@
-export type { DesignSpec, ExtractSpecOutput, PromptHelperOutput } from "@/lib/schemas";
+export type { DesignSpec, ExtractSpecOutput, AskQuestionOutput, PromptHelperOutput } from "@/lib/schemas";

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { extractSpec } from "@/lib/agents/prompt-helper";
+import { extract } from "@/lib/agents/prompt-helper";
 import { prisma } from "@/lib/prisma";
 import { detectLang } from "@/lib/i18n";
 import type { Lang } from "@/lib/i18n";
@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
     if (!projectId || !text) return NextResponse.json({ error: "projectId and text required" }, { status: 400 });
 
     const lang: Lang = detectLang(text);
-    const result = await extractSpec(text, lang);
+    const result = await extract(text, lang);
 
     await prisma.message.create({ data: { projectId, role: "user", content: text } });
     await prisma.message.create({ data: { projectId, role: "assistant", content: result.message } });
