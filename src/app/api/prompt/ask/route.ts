@@ -7,17 +7,30 @@ import { EMPTY_SPEC } from "@/lib/schemas";
 
 export async function POST(request: NextRequest) {
   try {
-    const { spec: partial } = await request.json() || {};
+    const { spec: partial, lang: clientLang } = await request.json() || {};
     if (!partial) return NextResponse.json({ error: "spec required" }, { status: 400 });
 
-    // Merge with EMPTY_SPEC to ensure all fields exist
-    const spec = { ...EMPTY_SPEC, ...partial, object: { ...EMPTY_SPEC.object, ...(partial.object||{}) }, visual: { ...EMPTY_SPEC.visual, ...(partial.visual||{}) }, composition: { ...EMPTY_SPEC.composition, ...(partial.composition||{}) }, features: { ...EMPTY_SPEC.features, ...(partial.features||{}) }, dimensions: { ...EMPTY_SPEC.dimensions, ...(partial.dimensions||{}) }, useCase: { ...EMPTY_SPEC.useCase, ...(partial.useCase||{}) } } as DesignSpec;
+    // Merge with EMPTY_SPEC
+    const spec = {
+      ...EMPTY_SPEC,
+      object: { ...EMPTY_SPEC.object, ...(partial.object||{}) },
+      visual: { ...EMPTY_SPEC.visual, ...(partial.visual||{}) },
+      composition: { ...EMPTY_SPEC.composition, ...(partial.composition||{}) },
+      features: { ...EMPTY_SPEC.features, ...(partial.features||{}) },
+      dimensions: { ...EMPTY_SPEC.dimensions, ...(partial.dimensions||{}) },
+      useCase: { ...EMPTY_SPEC.useCase, ...(partial.useCase||{}) },
+    } as DesignSpec;
 
-    const lang: Lang = detectLang(spec.object?.name || "en");
+    const lang: Lang = clientLang || detectLang(spec.object?.name || "en");
     const result = await ask(spec, lang);
-    return NextResponse.json({ ...result, message: result.message || (lang==="zh"?"請選擇：":"Choose one:") });
+    return NextResponse.json({
+      ...result,
+      message: result.message || (lang==="zh"?"請選擇一個選項：":"Choose one:"),
+    });
   } catch (err) {
     console.error("[Ask] Error:", err);
-    return NextResponse.json({ field: "useCase.primaryUse", question: "What's this for?", options: ["Decoration","Tool","Toy","Gift","Other"], message: "Let me ask..." });
+    return NextResponse.json({
+      field:"useCase.primaryUse", question:"What's this for?", options:["Decoration","Tool","Toy","Gift","Other"], message:"Choose one:"
+    });
   }
 }

@@ -113,7 +113,8 @@ function CreatePageInner() {
         updateProgress(data.spec);
 
         // Ask first question
-        const aRes = await fetch("/api/prompt/ask", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({spec:data.spec})});
+        const askLang = data.lang || convLang || dl || "en";
+        const aRes = await fetch("/api/prompt/ask", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({spec:data.spec,lang:askLang})});
         const aData = await aRes.json();
         setQuestion(aData);
         setMsgs(prev=>[...prev,{role:"ai",text:aData.message}]);
@@ -140,7 +141,7 @@ function CreatePageInner() {
         setQuestion(null);
         setMsgs(prev=>[...prev,{role:"ai",text:cl==="zh"?"好的，已收集足夠資訊！":"Got it, enough info collected!"}]);
       } else {
-        const aRes = await fetch("/api/prompt/ask", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({spec:newSpec})});
+        const aRes = await fetch("/api/prompt/ask", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({spec:newSpec,lang:convLang||"en"})});
         const aData = await aRes.json();
         setQuestion(aData);
         setMsgs(prev=>[...prev,{role:"ai",text:aData.message}]);
