@@ -1,29 +1,50 @@
-/** Prompts: extract (flat fields) + ask (1 question) + craft (9-section) */
+/** Prompts for extract, ask, craft. All optimized for qwen2.5:3b. */
 
 import type { Lang } from "@/lib/i18n";
 
-const EXTRACT = `Extract design data from user's description. Output ONLY valid JSON:
-{"name":"object name","type":"product|character|mechanical|jewelry|toy|other","style":"...","material":"...","color":"...","texture":"...","finish":"...","edgeTreatment":"...","viewAngle":"front","keyFeatures":"comma, separated","size":"...","use":"...","message":"friendly reply in user's language"}
+const EXTRACT = `Extract design data from user's description. Output ONLY valid JSON — no other text:
+{"name":"exact object name","type":"product|character|mechanical|jewelry|toy|food|other","style":"","material":"","color":"","texture":"","finish":"","edgeTreatment":"","viewAngle":"front","keyFeatures":"comma,separated","size":"","use":"","message":"short friendly reply matching user's language"}
 
-Rules: Fill EVERY field. Use user's EXACT words. Match their language.`;
+Fill EVERY field. Infer from context. Use user's EXACT words. If user says "apple", name:"apple", type:"food". If "dragon candle holder", name:"dragon candle holder", type:"product".`;
 
-const ASK = `You are collecting structured design data. The user has already provided some info (see current_spec below).
+const ASK = `You are helping collect design specs. Look at the current_spec to see what's already filled.
 
-Your job: pick the MOST IMPORTANT missing field and ask ONE question about it with 3-5 clickable options.
+Your ONLY job: Pick the 1 most important EMPTY field and ask about it. Output ONLY this JSON:
+{"field":"field.path","question":"Specific question about the user's object?","options":["Option 1","Option 2","Option 3","Other"],"message":"1 short sentence in user's language"}
 
-Output ONLY valid JSON:
-{"field":"visual.material","question":"What material?","options":["Matte plastic","Glossy resin","Metal","Wood","Other"],"message":"friendly reply in user's language"}
+FIELD PRIORITY (pick the first empty one):
+1. visual.material - What material?
+2. visual.style - What style?
+3. useCase.primaryUse - What's it used for?
+4. visual.color - What color?
+5. dimensions.approximateSize - How big?
+6. visual.texture - What surface texture?
+7. visual.finish - Matte or glossy?
 
-Rules:
-- Pick 1 field only. The most critical unfilled one.
-- Options MUST be specific to the user's object (not generic templates)
-- Last option always "Other" for custom input
-- Match the user's language EXACTLY
-- Priority: material > style > color > size > use > texture > finish > edge
+CRITICAL:
+- If the spec has almost nothing filled (only name), ask about the object CATEGORY first: "What kind of object is this?" with options like ["3D-printable figurine","Decorative object","Functional product","Food replica","Jewelry/accessory","Other"]
+- Options MUST be specific to what the user described. If they said "dragon", options should include dragon-related choices.
+- message MUST be a real sentence in the user's language, NOT placeholder text.
+- If user is Chinese, EVERYTHING in Chinese. If English, English.`;
 
-CRITICAL FIELDS to check (in order): visual.material, visual.style, visual.color, dimensions.approximateSize, useCase.primaryUse, visual.texture`;
+const CRAFT = `Generate 9-section prompt package from spec. Use the object's EXACT name from spec. Everything must be specific to THAT object — never generic.
 
-const CRAFT = `Generate 9-section prompt from spec. Use object's EXACT name. Positive prompt: single object, white bg, orthographic, studio lighting, product photography, 3D-ready. Prompts in English, explanations in user's language.`;
+2D CONSTRAINTS (hardcoded, always apply):
+- Single object only, plain white background
+- Orthographic front view (or 3/4 if needed)
+- Studio soft lighting, product photography style
+- Suitable for image-to-3D generation
+
+Sections:
+## 1. Visual Goal Summary
+## 2. Positive Prompt (English — detailed, object-specific)
+## 3. Negative Prompt (English)
+## 4. 中文版 (繁體中文)
+## 5. Hunyuan / I2T3D Prompt
+## 6. Blender / 3D Structure
+## 7. Parameters
+## 8. Checklist
+## 9. Variants`;
 
 const PROMPTS: Record<string, Record<Lang, string>> = {
   extract: { en: EXTRACT, zh: EXTRACT },

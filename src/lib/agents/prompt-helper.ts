@@ -51,7 +51,7 @@ export async function ask(spec: DesignSpec, lang: Lang = "en"): Promise<AskQuest
 
   const result = await callLLMStructured(
     getPrompt("ask", lang),
-    `current_spec: ${specSummary}\nPick the most important missing/empty field and ask 1 question with 3-5 options. Match the user's language.`,
+    `The user is creating: "${spec.object.name || 'something'}".\n\nCurrently filled:\n${specSummary}\n\nWhich field should we ask about next? Output the question with options.`,
     AskQuestionSchema, ASK_FALLBACK, "ask",
     { temperature: 0.3, maxTokens: 400 }
   );

@@ -56,19 +56,19 @@ export const EXTRACT_FALLBACK: ExtractSpecOutput = {
 // ── Ask (LLM generates ONE question for a missing field) ───────────
 
 export const AskQuestionSchema = z.object({
-  field: z.string(),         // "visual.material"
-  question: z.string(),       // "What material?"
-  options: z.array(z.string()), // ["Matte plastic","Glossy resin","Metal","Wood","Other"]
-  message: z.string(),
+  field: z.string(),
+  question: z.string(),
+  options: z.array(z.string()),
+  message: z.string().optional().default(""),
 });
 
 export type AskQuestionOutput = z.infer<typeof AskQuestionSchema>;
 
 export const ASK_FALLBACK: AskQuestionOutput = {
-  field: "visual.material",
-  question: "What material?",
-  options: ["Plastic", "Metal", "Wood", "Resin", "Other"],
-  message: "Let me ask about the material.",
+  field: "useCase.primaryUse",
+  question: "What's this used for?",
+  options: ["Decoration", "Practical tool", "Toy/Model", "Gift", "Other"],
+  message: "Let me understand the purpose.",
 };
 
 // ── Craft ──────────────────────────────────────────────────────────
