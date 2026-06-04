@@ -81,10 +81,25 @@ export async function craft(spec: DesignSpec, lang: Lang = "en", feedback?: stri
   const result = await callLLM(
     getPrompt("craft", lang),
     `SPEC:\n${specJson}\n\n${langHint}\nGenerate 9-section prompt. Positive MUST start: "${POSITIVE_PREFIX}". Negative MUST include: "${NEGATIVE_BASE}".${feedbackBlock}`,
-    { temperature: 0.3, maxTokens: 2500 }
+    { temperature: 0.3, maxTokens: 4096 }
   );
-  if (!result.content || result.content.length < 100) return PROMPT_HELPER_FALLBACK;
-  let content = result.content; let cp = ""; let np = "";
+  let rawContent = result.content || "";
+
+  // Strip thinking/reasoning blocks from models like qwen3.5 that output CoT
+  // These models wrap their chain-of-thought in specific markers
+  rawContent = rawContent
+    .replace(/<thinking[\s\S]*?<\/thinking>/gi, "")
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
+    .replace(/^[\s\S]*?thought process:[\s\S]*?(?=##\s*\d\.)/i, "$1")  // fallback: strip everything before first ## header
+    .trim();
+
+  // If after stripping thinking, we still don't have the 9-section headers, use raw content as-is
+  if (!rawContent.includes("## ") || rawContent.length < 200) {
+    rawContent = result.content; // fall back to original
+  }
+
+  if (!rawContent || rawContent.length < 100) return PROMPT_HELPER_FALLBACK;
+  let content = rawContent; let cp = ""; let np = "";
 
   // Match sections by header TEXT (not position number) — robust to ordering variations
   // Section 2 = Positive Prompt, Section 3 = Negative Prompt
