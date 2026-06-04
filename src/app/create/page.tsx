@@ -10,134 +10,141 @@ import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import { SketchPad } from "@/components/create/SketchPad";
 import { ReferenceImageUploader } from "@/components/create/ReferenceImageUploader";
 import { ReferenceModelUploader } from "@/components/create/ReferenceModelUploader";
-import { ArrowRight, Sparkles, Pencil, ImagePlus, Box, Loader2, Copy, Check, MessageSquare, Send, RefreshCw, Lightbulb, ChevronRight, Wand2 } from "lucide-react";
+import { ArrowRight, Sparkles, Pencil, ImagePlus, Box, Loader2, Copy, Check, MessageSquare, Send, RefreshCw, Lightbulb, Wand2 } from "lucide-react";
+import type { DesignSpec } from "@/lib/schemas";
+import { EMPTY_SPEC } from "@/lib/schemas";
 
-// ═══════════════ Question templates (frontend handles flow) ═══════════════
+interface QnA { path: string; question: string; options: string[] }
+type InputMode = "text" | "sketch" | "image" | "model";
 
-type QuestionField = "style" | "material" | "view" | "dimensions" | "features";
-interface QuestionTemplate { field: QuestionField; zh: { question: string; options: string[] }; en: { question: string; options: string[] } }
-
-const QT: QuestionTemplate[] = [
-  { field: "style", zh: { question: "偏好什麼風格？", options: ["簡約乾淨","藝術裝飾","科技未來感","自然有機","專業實用"] }, en: { question: "What style?", options: ["Minimal & clean","Artistic / decorative","Futuristic / tech","Natural / organic","Professional / utilitarian"] } },
-  { field: "material", zh: { question: "什麼材質質感？", options: ["啞光塑膠","亮光樹脂","金屬質感","木紋質感","透明材質"] }, en: { question: "Material finish?", options: ["Matte plastic","Glossy resin","Metallic","Wood texture","Transparent"] } },
-  { field: "view", zh: { question: "最佳展示角度？", options: ["正面視圖","3/4視角","等距視圖","俯視圖","多角度展示"] }, en: { question: "Viewing angle?", options: ["Front view","3/4 angle","Isometric","Top-down","Multiple angles"] } },
-  { field: "dimensions", zh: { question: "大概尺寸？", options: ["小巧(<10cm)","中型(10-20cm)","大型(20-30cm)","超大(>30cm)","無特定要求"] }, en: { question: "Approximate size?", options: ["Small (<4in)","Medium (4-8in)","Large (8-12in)","XL (>12in)","No preference"] } },
-  { field: "features", zh: { question: "特別要求？", options: ["可調節/可動","圓潤邊緣","堆疊/組合式","防滑設計","沒有特別要求"] }, en: { question: "Special features?", options: ["Adjustable / moving","Rounded edges","Stackable / modular","Anti-slip","No special features"] } },
+const MODES: Array<{key:InputMode;icon:typeof Sparkles;en:string;zh:string}> = [
+  {key:"text",icon:Sparkles,en:"Text",zh:"文字"},{key:"sketch",icon:Pencil,en:"Sketch",zh:"畫畫"},
+  {key:"image",icon:ImagePlus,en:"Image",zh:"圖片"},{key:"model",icon:Box,en:"3D File",zh:"3D檔案"},
 ];
+
+// Field label mapping for progress display
+const FIELD_LABELS: Record<string,{zh:string;en:string}> = {
+  "object.name":{zh:"物品名稱",en:"Object"},
+  "object.type":{zh:"類型",en:"Type"},
+  "visual.style":{zh:"風格",en:"Style"},
+  "visual.material":{zh:"材質",en:"Material"},
+  "visual.color":{zh:"顏色",en:"Color"},
+  "visual.texture":{zh:"紋理",en:"Texture"},
+  "visual.finish":{zh:"表面",en:"Finish"},
+  "visual.edgeTreatment":{zh:"邊緣",en:"Edges"},
+  "composition.viewAngle":{zh:"視角",en:"View"},
+  "composition.background":{zh:"背景",en:"Bg"},
+  "composition.lighting":{zh:"燈光",en:"Light"},
+  "composition.renderStyle":{zh:"渲染",en:"Render"},
+  "features.keyFeatures":{zh:"特徵",en:"Features"},
+  "dimensions.approximateSize":{zh:"尺寸",en:"Size"},
+  "useCase.primaryUse":{zh:"用途",en:"Use"},
+  "useCase.environment":{zh:"環境",en:"Env"},
+};
 
 function CreatePageInner() {
   const router = useRouter();
   const { lang, setLang, t } = useLang();
   const chatEndRef = useRef<HTMLDivElement>(null);
 
+  const [mode, setMode] = useState<InputMode>("text");
   const [description, setDescription] = useState("");
   const [loading, setLoading] = useState(false);
-  const [projectId, setProjectId] = useState<string | null>(null);
-  const [conversation, setConversation] = useState<Array<{ role: "user"|"ai"; text: string }>>([]);
+  const [projectId, setProjectId] = useState<string|null>(null);
+  const [conversation, setConversation] = useState<Array<{role:"user"|"ai";text:string}>>([]);
 
-  // Analysis
-  const [understood, setUnderstood] = useState("");
-  const [objectName, setObjectName] = useState("");
-  const [fieldsComplete, setFieldsComplete] = useState<Record<string,boolean>>({});
-  const [askedFields, setAskedFields] = useState<Set<string>>(new Set());
-  const [pendingField, setPendingField] = useState<QuestionTemplate|null>(null);
-  const [collectedAnswers, setCollectedAnswers] = useState<Record<string,string>>({});
-  const [customInput, setCustomInput] = useState("");
+  // ── Structured spec collection ──
+  const [spec, setSpec] = useState<DesignSpec>(EMPTY_SPEC);
+  const [questions, setQuestions] = useState<QnA[]>([]);
+  const [totalFields, setTotalFields] = useState(16);
+  const [filledFields, setFilledFields] = useState(0);
   const [readyToCraft, setReadyToCraft] = useState(false);
+  const [customInput, setCustomInput] = useState("");
 
-  // Result
-  const [promptResult, setPromptResult] = useState<{id?:string;version?:number;craftedPrompt:string;negativePrompt:string;styleNotes:string}|null>(null);
+  // ── Result ──
+  const [promptResult, setPromptResult] = useState<{id?:string;version?:number;content?:string;craftedPrompt:string;negativePrompt:string}|null>(null);
   const [copied, setCopied] = useState(false);
   const [generating, setGenerating] = useState(false);
 
-  // Mode + uploads
-  type InputMode = "text" | "sketch" | "image" | "model";
-  const [mode, setMode] = useState<InputMode>("text");
-  const MODES: Array<{key:InputMode;icon:typeof Sparkles;en:string;zh:string}> = [
-    {key:"text",icon:Sparkles,en:"Text",zh:"文字"},{key:"sketch",icon:Pencil,en:"Sketch",zh:"畫畫"},
-    {key:"image",icon:ImagePlus,en:"Image",zh:"圖片"},{key:"model",icon:Box,en:"3D File",zh:"3D檔案"},
-  ];
-
-  // Sketch
+  // ── Sketch/Upload ──
   const [sketchDataUrl, setSketchDataUrl] = useState<string|null>(null);
   const [sketchNotes, setSketchNotes] = useState("");
   const [uploadedImageIds, setUploadedImageIds] = useState<string[]>([]);
   const [uploadedModelIds, setUploadedModelIds] = useState<string[]>([]);
 
-  useEffect(() => { chatEndRef.current?.scrollIntoView({behavior:"smooth"}); }, [conversation,pendingField]);
+  useEffect(() => { chatEndRef.current?.scrollIntoView({behavior:"smooth"}); }, [conversation,questions]);
 
-  // ══════════════ Analyze ══════════════
-  const doAnalyze = async (userText: string, answers?: Record<string,string>) => {
+  // ══════════════ Analyze (fills spec progressively) ══════════════
+
+  const doAnalyze = async (userText: string) => {
     setLoading(true);
-    setConversation(prev => [...prev, { role:"user", text:userText }]);
-    const all = answers || collectedAnswers;
+    setConversation(prev => [...prev, {role:"user",text:userText}]);
 
     try {
       let pid = projectId;
       if (!pid) {
-        const r = await fetch("/api/projects", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({title:userText.slice(0,80),description:userText}) });
-        pid = (await r.json()).id;
-        setProjectId(pid);
+        const r = await fetch("/api/projects", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:userText.slice(0,80),description:userText})});
+        pid = (await r.json()).id; setProjectId(pid);
       }
 
-      const res = await fetch("/api/prompt/analyze", {
-        method:"POST", headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({projectId:pid, userMessage:userText, collectedAnswers:all, lang:detectLang(userText)}),
-      });
+      const body: Record<string,unknown> = {projectId:pid, userMessage:userText, currentSpec:spec};
+      if (sketchDataUrl&&mode==="sketch") body.sketchDescription = `User drew sketch. ${sketchNotes||""}`;
+      if (uploadedImageIds.length>0&&mode==="image") body.referenceImageAnalyses = uploadedImageIds;
+      if (uploadedModelIds.length>0&&mode==="model") body.referenceModelAnalyses = uploadedModelIds;
+
+      const res = await fetch("/api/prompt/analyze", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
       const data = await res.json();
-      const fc = data.fieldsComplete||{};
 
-      setConversation(prev => [...prev, { role:"ai", text:data.assistantMessage }]);
-      setUnderstood(data.understood);
-      setObjectName(data.object);
-      setFieldsComplete(fc);
-      if (answers) setCollectedAnswers(answers);
+      setConversation(prev => [...prev, {role:"ai",text:data.assistantMessage}]);
+      setSpec(data.spec);
+      setTotalFields(data.totalFields||16);
+      setFilledFields(data.filledFields||0);
 
-      // Find next unanswered question
-      const next = QT.find(q => !fc[q.field] && !askedFields.has(q.field));
-      if (next && Object.values(fc).filter(Boolean).length < 5) {
-        setPendingField(next);
-        setAskedFields(prev => new Set([...prev, next.field]));
+      if (data.readyToCraft) {
+        setQuestions([]);
+        setReadyToCraft(true);
+      } else if (data.nextQuestions?.length > 0) {
+        setQuestions(data.nextQuestions);
         setReadyToCraft(false);
       } else {
-        setPendingField(null);
-        setReadyToCraft(true);
+        // Fallback: ask 2 basic questions
+        setQuestions([
+          {path:"visual.style",question:t("What style?","什麼風格？"),options:t("Minimal,Industrial,Artistic,Organic,Futuristic,Other","簡約,工業風,藝術,有機,未來感,其他").split(",")},
+          {path:"visual.material",question:t("What material?","什麼材質？"),options:t("Plastic,Resin,Metal,Wood,Ceramic,Other","塑膠,樹脂,金屬,木材,陶瓷,其他").split(",")},
+        ]);
+        setReadyToCraft(false);
       }
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
   };
 
   // ══════════════ Craft ══════════════
+
   const doCraft = async (feedback?: string) => {
     if (!projectId) return;
     setLoading(true);
-    if (feedback) setConversation(prev => [...prev, { role:"user", text:feedback }]);
+    if (feedback) setConversation(prev => [...prev, {role:"user",text:feedback}]);
     try {
-      const res = await fetch("/api/prompt/craft", {
-        method:"POST", headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({projectId, collectedAnswers, feedback, lang:detectLang(feedback||understood||"")}),
-      });
+      const res = await fetch("/api/prompt/craft", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId,spec,feedback})});
       const data = await res.json();
       setPromptResult(data.promptVersion);
-      setConversation(prev => [...prev, { role:"ai", text:data.assistantMessage }]);
-      setReadyToCraft(false);
+      setConversation(prev => [...prev, {role:"ai",text:data.assistantMessage}]);
+      setReadyToCraft(false); setQuestions([]);
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
   };
 
   // ══════════════ Handlers ══════════════
+
   const handleStart = async () => {
     const text = sketchNotes || description;
     if (!text.trim()) return;
     await doAnalyze(text.trim());
   };
 
-  const handleOption = async (q: QuestionTemplate, opt: string) => {
-    const newAnswers = { ...collectedAnswers, [q.field]: opt };
-    const key = `${q.field}: ${opt}`;
-    setPendingField(null);
-    setCustomInput("");
-    await doAnalyze(key, newAnswers);
+  const handleOption = async (q: QnA, opt: string) => {
+    setQuestions([]); setCustomInput("");
+    await doAnalyze(`${q.question} → ${opt}`);
   };
 
   const handleGenerate = async () => {
@@ -147,16 +154,16 @@ function CreatePageInner() {
       const proj = await (await fetch(`/api/projects/${projectId}`)).json();
       const pv = proj.promptVersions?.[0];
       if (!pv) throw new Error("No version");
-      await fetch("/api/hunyuan/text-to-image", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({projectId, promptVersionId:pv.id, prompt:promptResult.craftedPrompt, negativePrompt:promptResult.negativePrompt, numImages:4}) });
+      await fetch("/api/hunyuan/text-to-image", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId,promptVersionId:pv.id,prompt:promptResult.craftedPrompt,negativePrompt:promptResult.negativePrompt,numImages:4})});
       router.push(`/projects/${projectId}`);
     } catch (err) { console.error(err); }
     finally { setGenerating(false); }
   };
 
   // ══════════════ Render ══════════════
-  const q = pendingField;
-  const qText = q ? (lang==="zh"?q.zh:q.en) : null;
-  const progress = Object.values(fieldsComplete).filter(Boolean).length;
+
+  const progress = totalFields > 0 ? Math.round((filledFields/totalFields)*100) : 0;
+  const showLang = detectLang(spec.object?.name||description||"")==="zh"?"zh":lang;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -169,30 +176,26 @@ function CreatePageInner() {
         </div>
       </header>
 
-      <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
-        {/* Progress */}
-        {objectName && (
-          <div className="flex items-center gap-2 text-sm text-gray-500">
-            <span className="font-medium text-gray-700">{objectName}</span>
-            <ChevronRight className="w-3 h-3"/>
-            <div className="flex gap-1">
-              {QT.map(qq => (
-                <span key={qq.field} className={`w-2.5 h-2.5 rounded-full transition-colors ${fieldsComplete[qq.field]?"bg-green-500":"bg-gray-300"}`} title={qq.field}/>
-              ))}
+      <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
+        {/* Progress bar */}
+        {spec.object?.name && (
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between text-sm">
+              <span className="font-semibold text-gray-900">{spec.object.name}</span>
+              <span className="text-gray-500">{filledFields}/{totalFields} fields · {progress}%</span>
             </div>
-            <span className="text-xs ml-1">{progress}/5</span>
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <div className="bg-blue-600 h-2 rounded-full transition-all duration-500" style={{width:`${progress}%`}}/>
+            </div>
           </div>
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* ═══ Main ═══ */}
           <div className="lg:col-span-2 space-y-4">
-            {/* Mode tabs */}
             <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
               {MODES.map(m=>(<button key={m.key} onClick={()=>setMode(m.key)} className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${mode===m.key?"bg-white text-blue-700 shadow-sm":"text-gray-600 hover:text-gray-900"}`}><m.icon className="w-3.5 h-3.5"/><span className="hidden sm:inline">{lang==="zh"?m.zh:m.en}</span></button>))}
             </div>
-
-            {/* Mode-specific content */}
             {mode==="sketch"&&<SketchPad onSave={setSketchDataUrl}/>}
             {mode==="image"&&<ReferenceImageUploader projectId={projectId} onUpload={imgs=>setUploadedImageIds(imgs.map(i=>i.id))}/>}
             {mode==="model"&&<ReferenceModelUploader projectId={projectId} onUpload={models=>setUploadedModelIds(models.map(m=>m.id))}/>}
@@ -205,19 +208,23 @@ function CreatePageInner() {
                 </div>
               ))}
 
-              {/* Question with options */}
-              {qText && !loading && !promptResult && (
-                <div className="ml-1 pl-4 border-l-2 border-blue-300 space-y-2 animate-in fade-in">
-                  <p className="text-sm font-semibold text-gray-800">{qText.question}</p>
-                  {qText.options.map((opt,idx)=>(
-                    <button key={idx} onClick={()=>handleOption(q!,opt)}
-                      className="w-full text-left text-sm px-4 py-2.5 rounded-lg border border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 transition-all shadow-sm">
-                      <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-100 text-blue-700 text-xs font-bold mr-2">{idx+1}</span>{opt}
-                    </button>
+              {/* LLM-generated questions */}
+              {questions.length > 0 && !loading && !promptResult && (
+                <div className="ml-1 pl-4 border-l-2 border-blue-300 space-y-4">
+                  {questions.map(q=>(
+                    <div key={q.path} className="space-y-1.5">
+                      <p className="text-sm font-semibold text-gray-800">{q.question}</p>
+                      {q.options.map((opt,idx)=>(
+                        <button key={idx} onClick={()=>handleOption(q,opt)}
+                          className="w-full text-left text-sm px-4 py-2.5 rounded-lg border border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 transition-all shadow-sm">
+                          <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-100 text-blue-700 text-xs font-bold mr-2">{idx+1}</span>{opt}
+                        </button>
+                      ))}
+                    </div>
                   ))}
-                  <button onClick={()=>setCustomInput(lang==="zh"?"自訂回答...":"Custom answer...")}
+                  <button onClick={()=>setCustomInput(showLang==="zh"?"自訂回答...":"Custom answer...")}
                     className="w-full text-left text-sm px-4 py-2.5 rounded-lg border border-dashed border-gray-300 text-gray-500 hover:border-blue-300 hover:text-blue-600 hover:bg-blue-50 transition-all">
-                    <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-gray-100 text-gray-500 text-xs font-bold mr-2">✎</span>{t("Or type your own...","或自己輸入...")}
+                    <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-gray-100 text-gray-500 text-xs font-bold mr-2">✎</span>{t("Or type...","或輸入...")}
                   </button>
                 </div>
               )}
@@ -228,13 +235,12 @@ function CreatePageInner() {
 
             {/* Input */}
             <div className="space-y-2">
-              {!objectName ? (
+              {!spec.object?.name ? (
                 <>
-                  {mode==="sketch"&&<Textarea value={sketchNotes} onChange={e=>setSketchNotes(e.target.value)} placeholder={t("Notes about your sketch...","草圖備註...")} rows={2} className="resize-none text-sm"/>}
+                  {mode==="sketch"&&<Textarea value={sketchNotes} onChange={e=>setSketchNotes(e.target.value)} placeholder={t("Notes...","備註...")} rows={2} className="resize-none text-sm"/>}
                   {(mode==="text"||mode==="image"||mode==="model")&&(
                     <Textarea value={description} onChange={e=>setDescription(e.target.value)}
-                      placeholder={t("In a few words, what do you want to create?\n\nE.g.: a 3-section adjustable phone stand, a dragon candle holder...","簡單描述您想創建什麼？\n\n例如：3節可調節手機支架、龍形蠟燭台...")}
-                      rows={3} className="resize-none text-sm"
+                      placeholder={t("Describe what you want to create...","描述您想創建的物品...")} rows={3} className="resize-none text-sm"
                       onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();handleStart();}}}/>
                   )}
                   <Button onClick={handleStart} disabled={loading||(!description.trim()&&!sketchNotes.trim())} className="w-full" size="lg">
@@ -245,10 +251,15 @@ function CreatePageInner() {
               ) : customInput ? (
                 <div className="flex gap-2">
                   <Textarea autoFocus value={customInput} onChange={e=>setCustomInput(e.target.value)}
-                    placeholder={t("Type your answer...","輸入您的回答...")} rows={1} className="resize-none text-sm flex-1"
+                    placeholder={t("Type your answer...","輸入回答...")} rows={1} className="resize-none text-sm flex-1"
                     onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();doAnalyze(customInput);setCustomInput("");}}}/>
                   <Button size="sm" onClick={()=>{doAnalyze(customInput);setCustomInput("");}} disabled={!customInput.trim()}><Send className="w-3.5 h-3.5"/></Button>
                 </div>
+              ) : readyToCraft ? (
+                <Button onClick={()=>doCraft()} disabled={loading} className="w-full" size="lg">
+                  {loading?<Loader2 className="w-4 h-4 animate-spin mr-2"/>:<Wand2 className="w-4 h-4 mr-2"/>}
+                  {t("Craft My Prompt!","✨ 生成我的提示詞！")}
+                </Button>
               ) : promptResult ? (
                 <div className="flex gap-2">
                   <div className="flex-1 flex gap-1">
@@ -263,46 +274,58 @@ function CreatePageInner() {
                     {generating?<Loader2 className="w-4 h-4 animate-spin mr-1"/>:<ArrowRight className="w-4 h-4 mr-1"/>}{t("Generate","生成")}
                   </Button>
                 </div>
-              ) : readyToCraft ? (
-                <Button onClick={()=>doCraft()} disabled={loading} className="w-full" size="lg">
-                  {loading?<Loader2 className="w-4 h-4 animate-spin mr-2"/>:<Wand2 className="w-4 h-4 mr-2"/>}
-                  {t("Craft My Prompt!","✨ 生成我的提示詞！")}
-                </Button>
               ) : null}
             </div>
           </div>
 
-          {/* ═══ Right panel ═══ */}
+          {/* ═══ Right ═══ */}
           <div className="space-y-4">
-            {understood && !promptResult && (
-              <Card className="border-blue-200 bg-blue-50">
-                <CardContent className="p-4">
-                  <CardTitle className="text-sm mb-1 flex items-center gap-2"><Lightbulb className="w-4 h-4 text-blue-600"/>{t("I understand:","理解：")}</CardTitle>
-                  <p className="text-sm text-blue-800 font-medium">{understood}</p>
+            {/* Spec fields collected so far */}
+            {spec.object?.name && !promptResult && (
+              <Card>
+                <CardContent className="p-4 space-y-1.5">
+                  <CardTitle className="text-xs font-medium text-gray-500 uppercase mb-2">{t("Collected Specs","已收集規格")}</CardTitle>
+                  {Object.entries(FIELD_LABELS).map(([path,labels])=>{
+                    const val = path.split(".").reduce((obj:any,k)=>obj?.[k],spec);
+                    const filled = val && (Array.isArray(val) ? val.length>0 : val !== "" && val !== false);
+                    return (
+                      <div key={path} className="flex items-center gap-2 text-xs">
+                        <span className={`w-1.5 h-1.5 rounded-full ${filled?"bg-green-500":"bg-gray-300"}`}/>
+                        <span className="text-gray-500 w-16 shrink-0">{showLang==="zh"?labels.zh:labels.en}</span>
+                        <span className={`truncate ${filled?"text-gray-900 font-medium":"text-gray-300 italic"}`}>
+                          {filled ? (Array.isArray(val)?(val as string[]).join(", "):String(val)) : "—"}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </CardContent>
               </Card>
             )}
 
+            {/* Prompt result */}
             {promptResult && (
               <Card>
-                <CardContent className="p-5 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-sm"><Sparkles className="w-4 h-4 text-blue-600 inline mr-1"/>{t("Your Prompt","您的提示詞")}</CardTitle>
-                    <Button variant="ghost" size="sm" onClick={()=>{navigator.clipboard.writeText(promptResult.craftedPrompt);setCopied(true);setTimeout(()=>setCopied(false),2000);}}>
+                <CardContent className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
+                  <div className="flex items-center justify-between sticky top-0 bg-white pb-2 border-b">
+                    <CardTitle className="text-sm"><Sparkles className="w-4 h-4 text-blue-600 inline mr-1"/>{t("Full Prompt Package","完整提示詞方案")}</CardTitle>
+                    <Button variant="ghost" size="sm" onClick={()=>{navigator.clipboard.writeText(promptResult.content||promptResult.craftedPrompt);setCopied(true);setTimeout(()=>setCopied(false),2000);}}>
                       {copied?<Check className="w-3.5 h-3.5 text-green-600"/>:<Copy className="w-3.5 h-3.5"/>}
                     </Button>
                   </div>
-                  <div className="bg-gray-50 rounded-md p-4 text-sm font-mono whitespace-pre-wrap leading-relaxed border">{promptResult.craftedPrompt}</div>
-                  {promptResult.negativePrompt&&<div><span className="text-xs font-medium text-gray-500 uppercase">{t("Negative","負向")}</span><div className="bg-gray-50 rounded-md p-2.5 text-xs font-mono mt-1 text-gray-600">{promptResult.negativePrompt}</div></div>}
-                  {promptResult.styleNotes&&<div className="text-xs bg-blue-50 rounded px-3 py-2 text-blue-800">{promptResult.styleNotes}</div>}
+                  <div className="text-sm whitespace-pre-wrap leading-relaxed"
+                    dangerouslySetInnerHTML={{__html:(promptResult.content||promptResult.craftedPrompt)
+                      .replace(/## ([^\n]+)/g,'<h3 class="text-base font-bold text-gray-900 mt-4 mb-2 border-b pb-1">$1</h3>')
+                      .replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>')
+                      .replace(/^- (.+)$/gm,'<li class="ml-4 text-gray-700">$1</li>')
+                      .replace(/\n\n/g,'<br/><br/>')}}/>
                 </CardContent>
               </Card>
             )}
 
-            {!understood && (
+            {!spec.object?.name && (
               <div className="flex flex-col items-center justify-center text-center py-16 text-gray-400">
                 <MessageSquare className="w-14 h-14 mb-4 opacity-20"/>
-                <p className="text-sm">{t("Describe your idea → click answers → get your prompt!","描述想法→點擊選項→獲得提示詞！")}</p>
+                <p className="text-sm">{t("Describe your idea → answer questions → get your prompt!","描述想法→回答問題→獲得提示詞！")}</p>
               </div>
             )}
           </div>

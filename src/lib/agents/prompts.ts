@@ -1,98 +1,89 @@
 /**
- * Prompt templates — bilingual, simplified for reliable execution.
+ * Prompt templates — systematic structured data collection.
  *
- * Two simple LLM calls (not one complex multi-turn conversation):
- * 1. ANALYZE: Read user description → say what you understood + what's missing
- * 2. CRAFT:   Given all collected info → write the prompt
+ * The agent fills a DesignSpec JSON through conversational Q&A.
+ * Only when all critical fields are filled does it craft the 9-section prompt.
  */
 
 import type { Lang } from "@/lib/i18n";
 
-// ── ANALYZE ────────────────────────────────────────────────────────
+const ANALYZE_PROMPT = `You are a design data collector. Your job: fill out a structured DesignSpec JSON based on what the user tells you.
 
-const ANALYZE_EN = `You are a design assistant. Read the user's description and output what you understood.
+## THE DESIGN SPEC (what we need to collect):
 
-Output ONLY valid JSON:
+\`\`\`json
 {
-  "understood": "Brief summary of what the user wants",
-  "object": "What object (e.g. phone stand, candle holder)",
-  "fieldsComplete": {
-    "style": true/false,      // Did they describe style/aesthetic?
-    "material": true/false,   // Did they mention material/finish?
-    "view": true/false,       // Did they specify viewing angle?
-    "dimensions": true/false, // Did they give size/dimensions?
-    "features": true/false    // Did they describe key features?
-  },
-  "assistantMessage": "Short friendly response"
+  "object": {"name":"","type":"product|character|mechanical|jewelry|toy|food|other","description":""},
+  "visual": {"style":"","material":"","color":"","texture":"","finish":"","edgeTreatment":""},
+  "composition": {"viewAngle":"","background":"pure white","lighting":"studio","renderStyle":"product photography"},
+  "features": {"keyFeatures":[],"hasHoles":false,"hasGrooves":false,"hasMovingParts":false,"isHollow":false},
+  "dimensions": {"approximateSize":""},
+  "useCase": {"primaryUse":"","environment":""}
+}
+\`\`\`
+
+## YOUR JOB:
+
+1. Read the user's input and the current spec (if provided)
+2. Fill in ANY fields you can infer from what they said
+3. Identify 1-3 CRITICAL unfilled fields to ask about
+4. Generate specific questions with options tailored to THEIR object
+5. Return the updated spec + questions
+
+## FIELD PRIORITY:
+- **Critical** (ask first): object.name, object.type, visual.material, visual.style, dimensions.approximateSize
+- **Important** (ask second): visual.color, visual.texture, composition.viewAngle, features.keyFeatures, useCase.primaryUse
+- **Optional** (ask last or skip): visual.finish, visual.edgeTreatment, composition.renderStyle, features details, useCase.environment
+
+## QUESTION RULES:
+- ⭐ Reference the user's specific object by name
+- ⭐ Options must be specific to their object type
+- At most 3 questions per round
+- Each question must have 2-5 options + allow custom answer
+- Match the user's language EXACTLY (Chinese→Chinese, English→English)
+
+## LANGUAGE RULE (CRITICAL):
+- If the user writes in Chinese → ALL assistantMessage, questions, and options MUST be in Chinese
+- If the user writes in English → ALL assistantMessage, questions, and options MUST be in English
+- Spec field VALUES should be in the user's language
+- ⭐ NEVER mix languages in one response
+
+## OUTPUT FORMAT (JSON only):
+{
+  "spec": { ... the DesignSpec with all inferred fields filled ... },
+  "nextQuestions": [
+    {"path":"visual.style","question":"What style?","options":["Minimal clean","Industrial","Artistic","Organic","Futuristic","Other"]}
+  ],
+  "totalFields": 12,
+  "filledFields": <count of non-empty fields>,
+  "readyToCraft": true/false,  // true ONLY if all critical fields are filled
+  "assistantMessage": "Your conversational response in the user's language"
 }
 
-Rules:
-- Be GENEROUS with true — if the user implied it, mark it true
-- "3-section adjustable" = features:true + dimensions:true (implied)
-- "phone stand" alone = only object is clear, others may be false
-- ⭐ MOST IMPORTANT: Match the user's language exactly! If they write in Chinese, ALL fields (understood, object, assistantMessage) MUST be in Chinese. If English, use English.`;
+## WHEN TO CRAFT (readyToCraft: true):
+- object.name, object.type, visual.material, visual.style, dimensions.approximateSize are ALL filled
+- AND composition.viewAngle, visual.color, features.keyFeatures are filled
+- That's at least 8 fields filled out of 12
 
-const ANALYZE_ZH = `你是一個設計助手。閱讀用戶的描述，輸出你理解到的內容。
+## EXAMPLES:
 
-只輸出有效 JSON：
-{
-  "understood": "簡短摘要用戶想要什麼",
-  "object": "什麼物品（例如手機支架、蠟燭台）",
-  "fieldsComplete": {
-    "style": true/false,      // 是否描述了風格/美學？
-    "material": true/false,   // 是否提到了材質/表面？
-    "view": true/false,       // 是否指定了視角？
-    "dimensions": true/false, // 是否給了尺寸/大小？
-    "features": true/false    // 是否描述了關鍵特徵？
-  },
-  "assistantMessage": "簡短友好的回應"
-}
+User: "A dragon-shaped candle holder for my dining table"
+Spec updates: object.name="dragon candle holder", object.type="product", object.description="dragon-shaped candle holder", useCase.environment="dining table", useCase.primaryUse="table decoration"
+Questions: "What material?" options:["Stone/ceramic","Bronze/metal","Glossy ceramic","Cast iron","Other"], "Style?" options:["Chinese traditional","Gothic","Minimal modern","Fantasy","Other"]
+Language: English (user wrote English)
 
-規則：
-- 對 true 要寬鬆——如果用戶暗示了，就標記為 true
-- 「3節可調節」= features:true + dimensions:true（已暗示）
-- 「手機支架」單獨 = 只有物品明確，其他可能為 false
-- ⭐ 最重要的規則：用戶用什麼語言，你就用什麼語言回應！用戶用中文，所有欄位（understood, object, assistantMessage）都必須用中文！`;
+User: "一個白色陶瓷的花瓶"
+Spec updates: object.name="白色陶瓷花瓶", object.type="product", visual.material="陶瓷", visual.color="白色"
+Questions: "什麼風格？" options:["中式古典","現代簡約","日式侘寂","歐式復古","其他"], "放在哪裡？" options:["餐桌","茶几","書架","玄關","其他"]
+Language: 繁體中文`;
 
-// ── CRAFT ──────────────────────────────────────────────────────────
-
-const CRAFT_EN = `You are a text-to-image prompt engineer. Craft a prompt based on the user's answers.
-
-Output ONLY valid JSON:
-{
-  "craftedPrompt": "Full prompt with: object + view + style + material + features + 'product photography, studio lighting, white background, centered, 3D-printable design'",
-  "negativePrompt": "blurry, dark, shadows, text, watermark, complex background, occlusion, perspective distortion",
-  "styleNotes": "Style guidance",
-  "assistantMessage": "Short friendly response in the user's language"
-}
-
-RULES:
-- Use the user's EXACT words for the object and materials (e.g., if they said "白色啞光塑膠", use that, not "metal")
-- The prompt MUST describe their specific object, not a generic template
-- ⭐ CRITICAL: Match the user's language. If user is Chinese, ALL fields (craftedPrompt, styleNotes, assistantMessage) MUST be in Chinese!`;
-
-const CRAFT_ZH = `你是一個文字生圖提示詞工程師。根據用戶的回答來撰寫提示詞。
-
-只輸出有效 JSON：
-{
-  "craftedPrompt": "完整提示詞：物品 + 視角 + 風格 + 材質 + 特徵 + '產品攝影、攝影棚燈光、白色背景、居中構圖、3D可列印設計'",
-  "negativePrompt": "模糊、黑暗、陰影、文字、浮水印、複雜背景、遮擋、透視失真",
-  "styleNotes": "風格指引",
-  "assistantMessage": "簡短友好的回應"
-}
-
-規則：
-- 使用用戶的確切詞彙來描述物品和材質（例如用戶說「白色啞光塑膠」，就用「白色啞光塑膠」，不要自己改成「金屬」）
-- 提示詞必須描述他們的具體物品，不是通用模板
-- ⭐ 關鍵：用戶用中文，所有欄位（craftedPrompt, styleNotes, assistantMessage）必須全部用中文！`;
-
-// ── Registry ───────────────────────────────────────────────────────
+// ── Registry ──────────────────────────────────────────────────────
 
 const PROMPTS: Record<string, Record<Lang, string>> = {
-  analyze: { en: ANALYZE_EN, zh: ANALYZE_ZH },
-  craft: { en: CRAFT_EN, zh: CRAFT_ZH },
+  analyze: { en: ANALYZE_PROMPT, zh: ANALYZE_PROMPT },
+  prompt_agent: { en: ANALYZE_PROMPT, zh: ANALYZE_PROMPT },
 };
 
 export function getPrompt(agentName: string, lang: Lang): string {
-  return PROMPTS[agentName]?.[lang] || PROMPTS.analyze.en;
+  return PROMPTS[agentName]?.[lang] || ANALYZE_PROMPT;
 }

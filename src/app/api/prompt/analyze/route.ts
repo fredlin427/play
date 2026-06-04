@@ -3,45 +3,53 @@ import { analyze } from "@/lib/agents/prompt-helper";
 import { prisma } from "@/lib/prisma";
 import { detectLang } from "@/lib/i18n";
 import type { Lang } from "@/lib/i18n";
+import type { DesignSpec } from "@/lib/schemas";
+import { EMPTY_SPEC } from "@/lib/schemas";
 
-/**
- * POST /api/prompt/analyze
- *
- * Simple analysis call: understand user description, identify what's missing.
- * Doesn't ask questions — the frontend handles that with pre-defined templates.
- */
 export async function POST(request: NextRequest) {
   try {
-    const { projectId, userMessage, lang: clientLang, collectedAnswers } = await request.json() || {};
+    const body = await request.json() || {};
+    const { projectId, userMessage, currentSpec, sketchDescription, referenceImageAnalyses, referenceModelAnalyses } = body;
 
     if (!projectId || !userMessage) {
       return NextResponse.json({ error: "projectId and userMessage required" }, { status: 400 });
     }
 
-    // Detect language from user message
+    // Build full message with multimodal context
+    let fullMessage = userMessage;
+    if (sketchDescription) fullMessage += `\n[Sketch]: ${sketchDescription}`;
+    if (referenceImageAnalyses?.length) fullMessage += `\n[Reference images uploaded]`;
+    if (referenceModelAnalyses?.length) fullMessage += `\n[Reference 3D models uploaded]`;
+
+    // Detect language from user's ACTUAL text (not field keys)
     const lang: Lang = detectLang(userMessage);
 
-    // Run analysis
-    const result = await analyze(userMessage, lang);
+    // Run LLM — passes current spec, returns updated spec + next questions
+    const spec: DesignSpec = currentSpec || EMPTY_SPEC;
+    const result = await analyze(fullMessage, spec, lang);
 
     // Save messages
     await prisma.message.create({ data: { projectId, role: "user", content: userMessage } });
     await prisma.message.create({ data: { projectId, role: "assistant", content: result.assistantMessage } });
 
     return NextResponse.json({
-      understood: result.understood,
-      object: result.object,
-      fieldsComplete: result.fieldsComplete,
-      collectedAnswers: collectedAnswers || {},
+      spec: result.spec,
+      nextQuestions: result.nextQuestions,
+      totalFields: result.totalFields,
+      filledFields: result.filledFields,
+      readyToCraft: result.readyToCraft,
       assistantMessage: result.assistantMessage,
     });
   } catch (error) {
     console.error("[Analyze API] Error:", error);
     return NextResponse.json({
-      understood: "3D-printable object",
-      object: "custom object",
-      fieldsComplete: { style: false, material: false, view: false, dimensions: false, features: false },
-      assistantMessage: "Let me help you design this! Tell me more about what you want.",
+      spec: EMPTY_SPEC,
+      nextQuestions: [
+        { path:"object.name", question:"What are you creating?", options:["Functional tool","Decorative piece","Prototype","Replacement part","Other"] },
+        { path:"visual.style", question:"What style?", options:["Minimal","Industrial","Artistic","Organic","Futuristic"] },
+      ],
+      totalFields: 12, filledFields: 0, readyToCraft: false,
+      assistantMessage: "Let me understand what you want to create!",
     });
   }
 }
