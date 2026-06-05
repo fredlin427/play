@@ -195,14 +195,30 @@ Your job:
     );
 
     const d = result.data;
+    const VALID_FIELDS = ["material", "color", "dimensions", "shape", "surface", "edges", "components", "style", "features"];
 
-    if (d.action === "done") {
-      return { questions: [], context: { ...context, coverage: getCoverage(spec) } };
+    if (d.action === "done" || !d.field || !VALID_FIELDS.includes(d.field)) {
+      // LLM returned invalid field or done — use template fallback
+      if (d.action === "done") {
+        // Only trust "done" if we have at least 3 fields filled
+        const filledCount = [spec.visual.material, spec.visual.color, spec.dimensions.approximateSize, spec.structure.mainShape].filter(Boolean).length;
+        if (filledCount >= 3) {
+          return { questions: [], context: { ...context, coverage: getCoverage(spec) } };
+        }
+      }
+      // Fall through to template
+      console.warn(`[Ask] LLM returned invalid field "${d.field}", using template fallback`);
+      const next = getNextQuestion(spec, [...context.askedFields, ...context.skippedFields], zh ? "zh" : "en");
+      if (!next) return { questions: [], context: { ...context, coverage: getCoverage(spec) } };
+      const q: AskQuestionOutput = { field: next.field, question: next.question, options: next.options, message: next.message };
+      const ctx: AskContext = { round: context.round + 1, askedFields: [...context.askedFields, next.field], answeredFields: context.answeredFields, skippedFields: context.skippedFields, coverage: getCoverage(spec) };
+      return { questions: [q], context: ctx };
     }
 
+    // LLM question is valid — use it
     const question: AskQuestionOutput = {
-      field: d.field || "custom",
-      question: d.question || (zh ? "請提供更多細節" : "Please provide more details"),
+      field: d.field,
+      question: d.question,
       options: d.options?.length ? d.options : ["Other", zh ? "不確定" : "Unsure"],
       message: d.message || (zh ? "請選擇或輸入：" : "Choose or type:"),
     };
