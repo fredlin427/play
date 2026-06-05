@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { LangProvider, useLang } from "@/lib/lang-context";
 import { detectLang } from "@/lib/i18n";
@@ -11,18 +11,21 @@ import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import { SketchPad } from "@/components/create/SketchPad";
 import { ReferenceImageUploader } from "@/components/create/ReferenceImageUploader";
 import { ReferenceModelUploader } from "@/components/create/ReferenceModelUploader";
-import { ArrowRight, Sparkles, Pencil, ImagePlus, Box, Loader2, Copy, Check, RefreshCw, Wand2, Lightbulb, ChevronDown, ChevronUp, MessageSquare } from "lucide-react";
+import { ArrowRight, Sparkles, Pencil, ImagePlus, Box, Loader2, Copy, Check, RefreshCw, Wand2, Lightbulb, ChevronDown, ChevronUp, MessageSquare, AlertCircle } from "lucide-react";
 import type { DesignSpec } from "@/lib/schemas";
 import { EMPTY_SPEC } from "@/lib/schemas";
+import type { AskContext } from "@/lib/agents/prompt-helper";
+import type { CoverageReport } from "@/lib/agents/coverage";
+import { TERMINATION } from "@/lib/agents/field-tiers";
+import { getSpecPath } from "@/lib/agents/prompt-template";
 
-const CRITICAL_FIELDS = ["subject.name","meta.assetType","meta.generationGoal","visual.material","visual.style","visual.color","dimensions.approximateSize","useCase.primaryUse"];
+const CRITICAL_FIELDS = ["subject.name","meta.assetType","meta.generationGoal","visual.material","meta.style","visual.color","dimensions.approximateSize","useCase.primaryUse"];
 const ALL_FIELDS = [
   {path:"subject.name",zh:"物品名",en:"Name"},
   {path:"meta.assetType",zh:"類型",en:"Type"},
   {path:"meta.generationGoal",zh:"目標",en:"Goal"},
   {path:"meta.style",zh:"風格",en:"Style"},
   {path:"visual.material",zh:"材質",en:"Material"},
-  {path:"visual.style",zh:"風格",en:"Style"},
   {path:"visual.color",zh:"顏色",en:"Color"},
   {path:"visual.texture",zh:"紋理",en:"Texture"},
   {path:"visual.finish",zh:"表面",en:"Finish"},
@@ -54,8 +57,6 @@ function setField(spec: DesignSpec, path: string, value: string): DesignSpec {
 function CreatePageInner() {
   const router = useRouter();
   const { lang:toggleLang, setLang, t } = useLang();
-  const chatEndRef = useRef<HTMLDivElement>(null);
-
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [pid, setPid] = useState<string|null>(null);
@@ -68,10 +69,16 @@ function CreatePageInner() {
   const [showSpec, setShowSpec] = useState(false);
   const [progress, setProgress] = useState(0);
 
-  // Q&A
+  // Q&A — multi-round with context
   const [questions, setQuestions] = useState<Array<{field:string;question:string;options:string[]}>>([]);
-  const [askCount, setAskCount] = useState(0);
-  const [askedFields, setAskedFields] = useState<string[]>([]);
+  const [askContext, setAskContext] = useState<AskContext>({round:0,askedFields:[],answeredFields:[],skippedFields:[],coverage:null});
+  const [coverage, setCoverage] = useState<CoverageReport|null>(null);
+  const [qaHistory, setQaHistory] = useState<Array<{q:string;a:string;skipped:boolean}>>([]);
+  const [customAnswer, setCustomAnswer] = useState("");
+
+  // Error + retry
+  const [error, setError] = useState<string|null>(null);
+  const [errorRetry, setErrorRetry] = useState<(()=>void)|null>(null);
 
   // Result
   const [result, setResult] = useState<{id?:string;content?:string;craftedPrompt:string;negativePrompt:string}|null>(null);
@@ -85,7 +92,7 @@ function CreatePageInner() {
 
   const cl = convLang || toggleLang;
 
-  useEffect(() => { chatEndRef.current?.scrollIntoView({behavior:"smooth"}); }, [msgs,questions]);
+  const questionRef = useRef<HTMLDivElement>(null);
 
   const updateProgress = (s: DesignSpec) => {
     const filled = CRITICAL_FIELDS.filter(f=>{const v=getField(s,f);return v&&v!==""&&v!=="false"&&v!=="0"&&v!=="indoor";}).length;
@@ -96,7 +103,7 @@ function CreatePageInner() {
 
   const handleExtract = async () => {
     if (!input.trim()) return;
-    setLoading(true);
+    setLoading(true); setError(null);
     setMsgs(prev=>[...prev,{role:"user",text:input}]);
 
     try {
@@ -111,92 +118,140 @@ function CreatePageInner() {
       const data = await res.json();
 
       if (data.spec) {
-        setSpec(data.spec);
-        setSpecReady(true);
+        setSpec(data.spec); setSpecReady(true);
         setMsgs(prev=>[...prev,{role:"ai",text:data.message}]);
         updateProgress(data.spec);
 
-        // Ask first questions
+        // First round of questions
         const askLang = data.lang || convLang || dl || "en";
-        const aRes = await fetch("/api/prompt/ask", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({spec:data.spec,lang:askLang,askedFields:[]})});
+        const ctx: AskContext = {round:0,askedFields:[],answeredFields:[],skippedFields:[],coverage:null};
+        const aRes = await fetch("/api/prompt/ask", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({spec:data.spec,lang:askLang,context:ctx})});
         const aData = await aRes.json();
         const qs = aData.questions || [];
         setQuestions(qs);
+        setAskContext(aData.context || {...ctx,round:1});
+        setCoverage(aData.context?.coverage || null);
         if (qs.length > 0) setMsgs(prev=>[...prev,{role:"ai",text:qs[0].message || (askLang==="zh"?"請選擇：":"Choose:")}]);
-        setAskCount(1);
       }
-    } catch (err) { console.error(err); }
+    } catch (err: any) { setError(`Extract: ${err.message||String(err)}`); setErrorRetry(()=>handleExtract); }
     finally { setLoading(false); }
   };
 
   // ══════════════ Answer question ══════════════
 
   const handleAnswer = async (q: {field:string;question:string;options:string[]}, opt: string) => {
-    setLoading(true);
+    setLoading(true); setError(null);
+    setQaHistory(prev=>[...prev,{q:q.question,a:opt,skipped:false}]);
     setMsgs(prev=>[...prev,{role:"user",text:opt}]);
 
-    const newSpec = setField(spec, q.field, opt);
+    // Map template variable key to DesignSpec path
+    const specPath = getSpecPath(q.field);
+    const newSpec = setField(spec, specPath, opt);
     setSpec(newSpec);
     updateProgress(newSpec);
-    const newAsked = [...askedFields, q.field];
-    setAskedFields(newAsked);
+    const newAnswered = [...askContext.answeredFields, q.field];
+    const newAsked = [...askContext.askedFields, q.field];
 
-    // Remove this question from the list
     const remaining = questions.filter(x => x.field !== q.field);
     setQuestions(remaining);
 
     try {
-      if (askCount >= 3 || progress >= 80) {
+      const newCtx: AskContext = {...askContext, answeredFields:newAnswered, askedFields:newAsked};
+      const cov = newCtx.coverage;
+      // Stop only when coverage is sufficient OR max rounds hit
+      const coveredEnough = cov?.shouldTerminate;
+      const maxedOut = newCtx.round >= TERMINATION.MAX_ROUNDS;
+
+      if (maxedOut || (remaining.length === 0 && coveredEnough)) {
         setQuestions([]);
-        setMsgs(prev=>[...prev,{role:"ai",text:cl==="zh"?"好的，已收集足夠資訊！":"Got enough info!"}]);
+        setAskContext(newCtx);
+        const msg = maxedOut
+          ? (cl==="zh" ? `已達最大輪數，生成提示詞。` : `Max rounds reached. Generating prompt.`)
+          : (cl==="zh" ? `資訊收集完成！可以生成提示詞了。` : `Got all the details! Ready to generate.`);
+        setMsgs(prev=>[...prev,{role:"ai",text:msg}]);
       } else if (remaining.length === 0) {
-        // Ask next batch
-        const aRes = await fetch("/api/prompt/ask", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({spec:newSpec,lang:convLang||"en",askedFields:newAsked})});
+        // Fetch next batch
+        const aRes = await fetch("/api/prompt/ask", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({spec:newSpec,lang:convLang||"en",context:newCtx})});
         const aData = await aRes.json();
         const qs = aData.questions || [];
         setQuestions(qs);
+        setAskContext(aData.context || newCtx);
+        setCoverage(aData.context?.coverage || null);
         if (qs.length > 0) setMsgs(prev=>[...prev,{role:"ai",text:qs[0].message || (cl==="zh"?"請選擇：":"Choose:")}]);
-        setAskCount(prev=>prev+1);
+      } else {
+        setAskContext(newCtx);
       }
-    } catch (err) { console.error(err); }
-    finally { setLoading(false); }
+    } catch (err: any) { setError(`Answer: ${err.message||String(err)}`); setErrorRetry(()=>handleAnswer(q,opt)); }
+    finally { setLoading(false); setCustomAnswer(""); }
+  };
+
+  // ══════════════ Skip question ══════════════
+
+  const handleSkip = (q: {field:string;question:string;options:string[]}) => {
+    setQaHistory(prev=>[...prev,{q:q.question,a:cl==="zh"?"不確定":"Unsure",skipped:true}]);
+    setMsgs(prev=>[...prev,{role:"user",text:cl==="zh"?"⏭️ 不確定":"⏭️ Unsure"}]);
+
+    const newSkipped = [...askContext.skippedFields, q.field];
+    const newAsked = [...askContext.askedFields, q.field];
+    const remaining = questions.filter(x => x.field !== q.field);
+    setQuestions(remaining);
+
+    const newCtx: AskContext = {...askContext, skippedFields:newSkipped, askedFields:newAsked};
+    setAskContext(newCtx);
+
+    const coveredEnough = newCtx.coverage?.shouldTerminate;
+
+    if (remaining.length === 0 && !coveredEnough) {
+      setLoading(true);
+      fetch("/api/prompt/ask", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({spec,lang:convLang||"en",context:newCtx})})
+        .then(r=>r.json()).then(aData=>{
+          const qs = aData.questions || [];
+          setQuestions(qs);
+          setAskContext(aData.context || newCtx);
+          setCoverage(aData.context?.coverage || null);
+          if (qs.length>0) setMsgs(prev=>[...prev,{role:"ai",text:qs[0].message||(cl==="zh"?"請選擇：":"Choose:")}]);
+        }).catch(err=>{setError(`Skip: ${err.message||String(err)}`);})
+        .finally(()=>setLoading(false));
+    } else if (remaining.length === 0 && coveredEnough) {
+      setMsgs(prev=>[...prev,{role:"ai",text:cl==="zh"?"資訊收集完成！可以生成提示詞了。":"Got all the details! Ready to generate."}]);
+    }
   };
 
   // ══════════════ Craft ══════════════
 
   const handleCraft = async () => {
     if (!pid) return;
-    setLoading(true);
+    setLoading(true); setError(null);
     try {
       const res = await fetch("/api/prompt/craft", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:pid,spec})});
       const data = await res.json();
       setResult(data.promptVersion);
-    } catch (err) { console.error(err); }
+    } catch (err: any) { setError(`Craft: ${err.message||String(err)}`); setErrorRetry(()=>handleCraft); }
     finally { setLoading(false); }
   };
 
   const handleIterate = async () => {
     if (!feedback.trim()||!pid) return;
-    setLoading(true);
+    setLoading(true); setError(null);
     try {
       const res = await fetch("/api/prompt/craft", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:pid,spec,feedback})});
       const data = await res.json();
       setResult(data.promptVersion);
       setFeedback("");
-    } catch (err) { console.error(err); }
+    } catch (err: any) { setError(`Iterate: ${err.message||String(err)}`); setErrorRetry(()=>handleIterate); }
     finally { setLoading(false); }
   };
 
   const handleGenImages = async () => {
     if (!pid||!result) return;
-    setGenLoading(true);
+    setGenLoading(true); setError(null);
     try {
       const proj = await (await fetch(`/api/projects/${pid}`)).json();
       const pv = proj.promptVersions?.[0];
       if (!pv) throw new Error("No version");
       await fetch("/api/hunyuan/text-to-image", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:pid,promptVersionId:pv.id,prompt:result.craftedPrompt,negativePrompt:result.negativePrompt,numImages:4})});
       router.push(`/projects/${pid}`);
-    } catch (err) { console.error(err); }
+    } catch (err: any) { setError(`Gen Images: ${err.message||String(err)}`); setErrorRetry(()=>handleGenImages); }
     finally { setGenLoading(false); }
   };
 
@@ -218,16 +273,45 @@ function CreatePageInner() {
         </div>
       </header>
 
-      <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
-        {/* Progress bar */}
-        {specReady && (
+      <div className="max-w-5xl mx-auto px-4 py-4 space-y-4">
+        {/* Error banner */}
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-red-500 shrink-0"/>
+            <span className="text-sm text-red-700 flex-1">{error}</span>
+            {errorRetry && <Button variant="outline" size="sm" onClick={()=>{setError(null);errorRetry();}}>{t("Retry","重試")}</Button>}
+            <Button variant="ghost" size="sm" onClick={()=>setError(null)}>✕</Button>
+          </div>
+        )}
+
+        {/* Category progress bars */}
+        {specReady && coverage && !result && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <span className="font-semibold">{spec.subject.name||"..."}</span>
+              <span className="text-gray-500">{t("Round","輪")} {askContext.round}/5 · {Math.round(coverage.overall*100)}%</span>
+            </div>
+            {Object.entries(coverage.byCategory).map(([cat, data]) => (
+              <div key={cat} className="flex items-center gap-2 text-xs">
+                <span className="w-16 text-right text-gray-500">{cl==="zh"?data.label.zh:data.label.en}</span>
+                <div className="flex-1 bg-gray-200 rounded-full h-2">
+                  <div className={`h-2 rounded-full ${data.ratio>=1?"bg-green-500":data.ratio>=0.5?"bg-yellow-500":"bg-red-400"}`} style={{width:`${data.ratio*100}%`}}/>
+                </div>
+                <span className="w-8 text-gray-400">{data.filled}/{data.total}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Legacy progress bar (fallback when coverage not available) */}
+        {specReady && !coverage && !result && (
           <div className="space-y-1.5">
             <div className="flex items-center justify-between text-sm">
               <span className="font-semibold">{spec.subject.name||"..."}</span>
-              <span className="text-gray-500">{progress}% · {t("Round","輪")} {askCount}/3</span>
+              <span className="text-gray-500">{progress}% · {t("Round","輪")} {askContext.round}/5</span>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-2.5">
-              <div className="bg-blue-600 h-2.5 rounded-full transition-all duration-500" style={{width:`${progress}%`}}/>
+              <div className="bg-blue-600 h-2.5 rounded-full" style={{width:`${progress}%`}}/>
             </div>
           </div>
         )}
@@ -236,35 +320,74 @@ function CreatePageInner() {
           {/* ═══ LEFT: Chat + Q&A ═══ */}
           <div className="lg:col-span-3 space-y-4">
             <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-              {MODES.map(m=>(<button key={m.key} onClick={()=>setMode(m.key)} className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${mode===m.key?"bg-white text-blue-700 shadow-sm":"text-gray-600 hover:text-gray-900"}`}><m.icon className="w-3.5 h-3.5"/><span className="hidden sm:inline">{toggleLang==="zh"?m.zh:m.en}</span></button>))}
+              {MODES.map(m=>(<button key={m.key} onClick={()=>setMode(m.key)} className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium ${mode===m.key?"bg-white text-blue-700 shadow-sm":"text-gray-600 hover:text-gray-900"}`}><m.icon className="w-3.5 h-3.5"/><span className="hidden sm:inline">{toggleLang==="zh"?m.zh:m.en}</span></button>))}
             </div>
             {mode==="sketch"&&<><SketchPad onSave={()=>{}}/><Textarea value={sketchNotes} onChange={e=>setSketchNotes(e.target.value)} placeholder={t("Notes...","備註...")} rows={2} className="resize-none text-sm"/></>}
             {mode==="image"&&<ReferenceImageUploader projectId={pid} onUpload={()=>{}}/>}
             {mode==="model"&&<ReferenceModelUploader projectId={pid} onUpload={()=>{}}/>}
 
-            {/* Chat messages */}
-            <div className="space-y-3 max-h-[350px] overflow-y-auto">
+            {/* Chat messages — natural flow, no scroll jail */}
+            <div className="space-y-3">
               {msgs.map((m,i)=>(
-                <div key={i} className={`flex ${m.role==="user"?"justify-end":"justify-start"}`}>
+                <div key={`${m.role}-${i}-${m.text.slice(0,10)}`} className={`flex ${m.role==="user"?"justify-end":"justify-start"}`}>
                   <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm ${m.role==="user"?"bg-blue-600 text-white rounded-br-md":"bg-white border text-gray-800 rounded-bl-md shadow-sm"}`}>{m.text}</div>
                 </div>
               ))}
 
-              {/* ⭐ Questions with clickable options */}
-              {questions.length > 0 && !loading && !result && questions.map((q,qi)=>(
-                <div key={qi} className="ml-1 pl-4 border-l-2 border-blue-300 space-y-2">
-                  <p className="text-sm font-semibold text-gray-800">{q.question}</p>
-                  {q.options.map((opt,idx)=>(
-                    <button key={idx} onClick={()=>handleAnswer(q,opt)}
-                      className="w-full text-left text-sm px-4 py-2.5 rounded-lg border border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 transition-all shadow-sm">
-                      <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-100 text-blue-700 text-xs font-bold mr-2">{idx+1}</span>{opt}
-                    </button>
-                  ))}
+              {/* ⭐ Accumulated spec summary */}
+              {specReady && !result && (
+                <div className="text-xs text-gray-500 bg-gray-50 rounded-lg p-2 space-y-0.5">
+                  <span className="font-medium text-gray-700">{cl==="zh"?"已收集：":"Collected: "}</span>
+                  {[
+                    spec.visual.material && `${cl==="zh"?"材質":"material"}:${spec.visual.material}`,
+                    spec.visual.color && `${cl==="zh"?"顏色":"color"}:${spec.visual.color}`,
+                    spec.dimensions.approximateSize && `${cl==="zh"?"尺寸":"size"}:${spec.dimensions.approximateSize}`,
+                    spec.structure.mainShape && `${cl==="zh"?"形狀":"shape"}:${spec.structure.mainShape}`,
+                    (spec.visual.texture||spec.visual.finish) && `${cl==="zh"?"表面":"surface"}:${[spec.visual.texture,spec.visual.finish].filter(Boolean).join(" ")}`,
+                    spec.visual.edgeTreatment && `${cl==="zh"?"邊緣":"edge"}:${spec.visual.edgeTreatment}`,
+                    spec.structure.details && `${cl==="zh"?"細節":"detail"}:${spec.structure.details.slice(0,40)}`,
+                  ].filter(Boolean).map((t,i)=><span key={i} className="inline-block bg-white rounded px-1.5 py-0.5 mr-1 mb-1 border">{t}</span>)}
+                  {!spec.visual.material && !spec.dimensions.approximateSize && <span>{cl==="zh"?"尚未收集任何資訊":"No info collected yet"}</span>}
                 </div>
-              ))}
+              )}
+
+              {/* ⭐ Single question at a time */}
+              {questions.length > 0 && !loading && !result && (
+                <div ref={questionRef} className="space-y-3 bg-blue-50/50 rounded-xl p-4 border border-blue-200">
+                  <p className="text-base font-semibold text-gray-900">{questions[0].question}</p>
+                  {/* Text input — primary for dimensions/free-text, secondary for option questions */}
+                  <div className="flex gap-2">
+                    <Input value={customAnswer} onChange={e=>setCustomAnswer(e.target.value)}
+                      placeholder={questions[0].options.filter(o=>!o.includes("跳過")&&!o.includes("skip")).length===0
+                        ? (cl==="zh"?"請直接輸入...":"Type your answer...")
+                        : (cl==="zh"?"或自行輸入...":"Or type your own...")}
+                      className="h-10 text-sm flex-1"
+                      autoFocus={questions[0].options.filter(o=>!o.includes("跳過")&&!o.includes("skip")).length===0}
+                      onKeyDown={e=>{if(e.key==="Enter"&&customAnswer.trim()){e.preventDefault();handleAnswer(questions[0],customAnswer.trim());}}}/>
+                    {customAnswer.trim() && (
+                      <Button size="sm" onClick={()=>handleAnswer(questions[0],customAnswer.trim())}>✓</Button>
+                    )}
+                  </div>
+                  {/* Options — only if there are meaningful choices beyond skip */}
+                  {questions[0].options.filter(o=>!o.includes("跳過")&&!o.includes("skip")).length>0 && (
+                    <div className="grid grid-cols-1 gap-2">
+                      {questions[0].options.filter(o=>!o.includes("跳過")&&!o.includes("skip")).map((opt,idx)=>(
+                        <button key={idx} onClick={()=>handleAnswer(questions[0],opt)}
+                          className="w-full text-left px-4 py-3 rounded-xl border-2 border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50 hover:shadow-md flex items-center gap-3">
+                          <span className="shrink-0 w-7 h-7 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center">{idx+1}</span>
+                          <span className="text-sm font-medium">{opt}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <button onClick={()=>handleSkip(questions[0])}
+                    className="w-full text-center text-xs py-2 rounded-lg border border-dashed border-gray-300 text-gray-400 hover:border-amber-300 hover:text-amber-600 hover:bg-amber-50">
+                    {cl==="zh"?"⏭️ 不確定，跳過":"⏭️ Unsure, skip"}
+                  </button>
+                </div>
+              )}
 
               {loading && <div className="flex items-center gap-2 text-sm text-blue-600"><Loader2 className="w-4 h-4 animate-spin"/>{t("Thinking...","思考中...")}</div>}
-              <div ref={chatEndRef}/>
             </div>
 
             {/* Input / Craft button */}
@@ -327,17 +450,25 @@ function CreatePageInner() {
               </CardContent></Card>
             )}
 
-            {/* Result */}
+            {/* Result: SD Prompt */}
             {result && (
               <Card><CardContent className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
                 <div className="flex items-center justify-between sticky top-0 bg-white pb-2 border-b">
-                  <CardTitle className="text-sm"><Sparkles className="w-4 h-4 text-blue-600 inline mr-1"/>{t("Prompt","提示詞")}</CardTitle>
-                  <Button variant="ghost" size="sm" onClick={()=>{navigator.clipboard.writeText(result.content||result.craftedPrompt);setCopied(true);setTimeout(()=>setCopied(false),2000);}}>
+                  <CardTitle className="text-sm"><Sparkles className="w-4 h-4 text-blue-600 inline mr-1"/>SD Prompt</CardTitle>
+                  <Button variant="ghost" size="sm" onClick={()=>{navigator.clipboard.writeText(result.craftedPrompt);setCopied(true);setTimeout(()=>setCopied(false),2000);}}>
                     {copied?<Check className="w-3.5 h-3.5 text-green-600"/>:<Copy className="w-3.5 h-3.5"/>}
                   </Button>
                 </div>
-                <div className="text-sm whitespace-pre-wrap leading-relaxed"
-                  dangerouslySetInnerHTML={{__html:(result.content||result.craftedPrompt).replace(/## ([^\n]+)/g,'<h3 class="text-base font-bold text-gray-900 mt-4 mb-2 border-b pb-1">$1</h3>').replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>').replace(/^- (.+)$/gm,'<li class="ml-4 text-gray-700">$1</li>').replace(/\n\n/g,'<br/><br/>')}}/>
+                <div className="space-y-3">
+                  <div>
+                    <h4 className="text-xs font-semibold text-green-700 mb-1">Positive Prompt (發給 SD)</h4>
+                    <p className="text-sm bg-green-50 rounded-lg p-3 leading-relaxed break-all font-mono text-xs">{result.craftedPrompt}</p>
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-semibold text-red-700 mb-1">Negative Prompt</h4>
+                    <p className="text-sm bg-red-50 rounded-lg p-3 leading-relaxed break-all font-mono text-xs">{result.negativePrompt}</p>
+                  </div>
+                </div>
               </CardContent></Card>
             )}
           </div>

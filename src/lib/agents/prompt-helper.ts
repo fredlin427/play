@@ -8,17 +8,20 @@
 import { callLLM, callLLMStructured } from "@/lib/llm";
 import {
   ExtractSpecSchema, EXTRACT_FALLBACK,
-  AskQuestionArraySchema, ASK_ARRAY_FALLBACK,
   PROMPT_HELPER_FALLBACK,
+  DesignSpecSchema, EMPTY_SPEC,
 } from "@/lib/schemas";
 import type { DesignSpec, ExtractSpecOutput, AskQuestionOutput, PromptHelperOutput } from "@/lib/schemas";
 import { getPrompt } from "@/lib/agents/prompts";
 import type { Lang } from "@/lib/i18n";
+import { getCoverage, type CoverageReport } from "@/lib/agents/coverage";
+import { TERMINATION } from "@/lib/agents/field-tiers";
+import { getNextQuestion } from "@/lib/agents/prompt-template";
 
-export type { DesignSpec, ExtractSpecOutput, AskQuestionOutput, PromptHelperOutput };
+export type { DesignSpec, ExtractSpecOutput, AskQuestionOutput, PromptHelperOutput, AskContext };
 
-const POSITIVE_PREFIX = "single object only, isolated on white background, centered composition, front or 3/4 view, full object in frame, clean silhouette, studio soft lighting, product photography, technical render, clear edges and materials, image-to-3D ready";
-const NEGATIVE_BASE = "text, watermark, logo, multiple objects, complex background, blur, distortion, extreme perspective, cropped, occlusion, harsh shadows, artistic lighting";
+const POSITIVE_PREFIX = "single object, white background, studio lighting, product photo, 3D-ready";
+const NEGATIVE_BASE = "text, watermark, logo, multiple objects, background clutter, blur, distortion, harsh shadows";
 
 // ═══════════════ Extract ═══════════════
 
@@ -29,47 +32,139 @@ export async function extract(userText: string, lang: Lang = "en"): Promise<{spe
     { temperature: 0.2, maxTokens: 800 }
   );
   const d = result.data;
-  return {
-    spec: {
-      meta: { inputType: d.inputType, assetType: d.assetType, generationGoal: d.generationGoal, style: d.style },
-      subject: { name: d.name, description: userText },
-      visual: { material: d.material, color: d.color, texture: d.texture, finish: d.finish, edgeTreatment: d.edgeTreatment },
-      structure: { mainShape: d.mainShape, details: d.details, hasHoles: d.hasHoles ?? false, hasGrooves: d.hasGrooves ?? false, hasMovingParts: d.hasMovingParts ?? false, isHollow: d.isHollow ?? false },
-      composition: { viewAngle: d.viewAngle, poseOrOrientation: d.poseOrOrientation ?? "", background: "pure white", lighting: "studio soft" },
-      dimensions: { approximateSize: d.size },
-      useCase: { primaryUse: d.use, environment: "indoor" },
+
+  // Safety net: if user input is short/vague, clear inferred fields so Q&A must ask.
+  // LLMs often hallucinate reasonable-sounding but wrong values.
+  const isShortInput = userText.trim().length < 30 && !/\d/.test(userText);
+  const materialKeywords = /pla|petg|abs|resin|tpu|nylon|metal|wood|silicone|plastic|rubber|steel|aluminum|copper|glass|ceramic|fabric|leather|foam|concrete/i;
+  const sizeKeywords = /\d+\s*(mm|cm|m|inch|in)|[\d.]+x[\d.]+|palm|hand|fits in|desktop|tabletop|mini|small|medium|large|big|tiny|huge/i;
+
+  if (isShortInput) {
+    // User only gave a name — clear ALL inferred values to force Q&A
+    d.material = "";
+    d.color = "";
+    d.texture = "";
+    d.finish = "";
+    d.edgeTreatment = "";
+    d.mainShape = "";
+    d.details = "";
+    d.size = "";
+    d.use = "";
+    d.viewAngle = "";
+    d.poseOrOrientation = "";
+  } else {
+    // Longer input — selective clearing
+    if (!materialKeywords.test(userText) && d.material && d.material.length < 20) d.material = "";
+    if (!sizeKeywords.test(d.size || "") && !sizeKeywords.test(userText)) d.size = "";
+  }
+
+  let spec: DesignSpec = {
+    meta: {
+      inputType: d.inputType,
+      assetType: d.assetType === "unknown" ? "product" : d.assetType,  // default to product
+      generationGoal: "2d_to_3d",
+      style: "realistic",
     },
-    message: d.message,
+    subject: { name: d.name, description: userText },
+    visual: { material: d.material, color: d.color, texture: d.texture, finish: d.finish, edgeTreatment: d.edgeTreatment },
+    structure: { mainShape: d.mainShape, details: d.details, hasHoles: d.hasHoles ?? false, hasGrooves: d.hasGrooves ?? false, hasMovingParts: d.hasMovingParts ?? false, isHollow: d.isHollow ?? false },
+    composition: {
+      viewAngle: d.viewAngle || "front or 3/4",
+      poseOrOrientation: d.poseOrOrientation || "standing upright, centered",
+      background: "pure white",
+      lighting: "studio soft",
+    },
+    dimensions: { approximateSize: d.size },
+    useCase: { primaryUse: d.use || "3D printing reference image", environment: "indoor" },
   };
+  // Validate the constructed DesignSpec against the schema
+  const validation = DesignSpecSchema.safeParse(spec);
+  if (!validation.success) {
+    console.warn("[Extract] DesignSpec validation failed, merging with defaults:", validation.error.flatten());
+    spec = {
+      meta: { ...EMPTY_SPEC.meta, ...spec.meta },
+      subject: { ...EMPTY_SPEC.subject, ...spec.subject },
+      visual: { ...EMPTY_SPEC.visual, ...spec.visual },
+      structure: { ...EMPTY_SPEC.structure, ...spec.structure },
+      composition: { ...EMPTY_SPEC.composition, ...spec.composition },
+      dimensions: { ...EMPTY_SPEC.dimensions, ...spec.dimensions },
+      useCase: { ...EMPTY_SPEC.useCase, ...spec.useCase },
+    };
+  }
+  return { spec, message: d.message };
 }
 
-// ═══════════════ Ask (1-3 questions) ═══════════════
+// ═══════════════ Ask (multi-round Q&A with coverage tracking) ═══════════════
 
-export async function ask(spec: DesignSpec, askedFields: string[], lang: Lang = "en"): Promise<AskQuestionOutput[]> {
-  const filled = [
-    spec.subject.name && `name:${spec.subject.name}`,
-    spec.meta.assetType !== "unknown" && `assetType:${spec.meta.assetType}`,
-    spec.meta.generationGoal !== "unknown" && `goal:${spec.meta.generationGoal}`,
-    spec.visual.material && `material:${spec.visual.material}`,
-    spec.meta.style && `style:${spec.meta.style}`,
-    spec.visual.color && `color:${spec.visual.color}`,
-    spec.visual.texture && `texture:${spec.visual.texture}`,
-    spec.dimensions.approximateSize && `size:${spec.dimensions.approximateSize}`,
-    spec.useCase.primaryUse && `use:${spec.useCase.primaryUse}`,
-    spec.composition.viewAngle && `view:${spec.composition.viewAngle}`,
-  ].filter(Boolean).join(", ");
+interface AskContext {
+  round: number;
+  askedFields: string[];
+  answeredFields: string[];
+  skippedFields: string[];
+  coverage: CoverageReport | null;
+}
 
-  const asked = askedFields.length > 0 ? `\nAlready asked: ${askedFields.join(", ")}` : "";
+export async function ask(
+  spec: DesignSpec,
+  context: AskContext,
+  lang: Lang = "en",
+): Promise<{ questions: AskQuestionOutput[]; context: AskContext }> {
+  const zh = lang === "zh";
 
-  // Use callLLMStructured for proper JSON output + automatic retry on parse failure
-  const result = await callLLMStructured(
-    getPrompt("ask", lang),
-    `Object: "${spec.subject.name || 'unknown'}". Asset type: ${spec.meta.assetType}. Goal: ${spec.meta.generationGoal}.\nFilled: ${filled}${asked}\n\nPick 1-3 most important missing fields and ask questions with options. Output JSON array. Match user's language.`,
-    AskQuestionArraySchema, ASK_ARRAY_FALLBACK, "ask",
-    { temperature: 0.3, maxTokens: 600 }
-  );
+  // 1. Get next unanswered question from template
+  const askedKeys = [...context.askedFields, ...context.skippedFields];
+  const next = getNextQuestion(spec, askedKeys, zh ? "zh" : "en");
 
-  return result.data;
+  // 2. All questions answered → done
+  if (!next) {
+    return { questions: [], context: { ...context, coverage: getCoverage(spec) } };
+  }
+
+  // 3. Safety cap
+  if (context.round >= TERMINATION.MAX_ROUNDS) {
+    return { questions: [], context: { ...context, coverage: getCoverage(spec) } };
+  }
+
+  // 4. Return single question
+  const question: AskQuestionOutput = {
+    field: next.field,
+    question: next.question,
+    options: next.options,
+    message: next.message,
+  };
+
+  const newContext: AskContext = {
+    round: context.round + 1,
+    askedFields: [...context.askedFields, next.field],
+    answeredFields: context.answeredFields,
+    skippedFields: context.skippedFields,
+    coverage: getCoverage(spec),
+  };
+
+  return { questions: [question], context: newContext };
+}
+
+// ═══════════════ Craft helpers ═══════════════
+
+/** Inject a prefix into a matched prompt section if not already present. */
+function injectPrefix(match: RegExpMatchArray | null, prefix: string): { text: string; injected: boolean } {
+  if (!match) return { text: "", injected: false };
+  let text = match[1].trim();
+  const firstToken = prefix.split(",")[0].toLowerCase();
+  if (!text.toLowerCase().includes(firstToken)) {
+    text = prefix + ", " + text;
+  }
+  return { text, injected: true };
+}
+
+/** Replace the matched section content within the full content string. */
+function replaceSection(content: string, match: RegExpMatchArray, replacement: string): string {
+  return content.replace(match[0], match[0].replace(match[1], replacement));
+}
+
+/** Clean bullet markers from a comma-separated prompt string. */
+function cleanPrompt(p: string): string {
+  return p.replace(/^[-*•]\s*/, "").replace(/,\s*[-*•]\s*/g, ", ").trim();
 }
 
 // ═══════════════ Craft ═══════════════
@@ -85,62 +180,47 @@ export async function craft(spec: DesignSpec, lang: Lang = "en", feedback?: stri
   );
   let rawContent = result.content || "";
 
-  // Strip thinking/reasoning blocks from models like qwen3.5 that output CoT
-  // These models wrap their chain-of-thought in specific markers
+  // Strip thinking/reasoning blocks
   rawContent = rawContent
     .replace(/<thinking[\s\S]*?<\/thinking>/gi, "")
     .replace(/<think>[\s\S]*?<\/think>/gi, "")
-    .replace(/^[\s\S]*?thought process:[\s\S]*?(?=##\s*\d\.)/i, "$1")  // fallback: strip everything before first ## header
+    .replace(/^[\s\S]*?thought process:[\s\S]*?(?=##\s*\d\.)/i, "")
     .trim();
 
-  // If after stripping thinking, we still don't have the 9-section headers, use raw content as-is
   if (!rawContent.includes("## ") || rawContent.length < 200) {
-    rawContent = result.content; // fall back to original
+    rawContent = result.content;
   }
 
   if (!rawContent || rawContent.length < 100) return PROMPT_HELPER_FALLBACK;
   let content = rawContent; let cp = ""; let np = "";
 
-  // Match sections by header TEXT (not position number) — robust to ordering variations
-  // Section 2 = Positive Prompt, Section 3 = Negative Prompt
+  // Primary: match by header text
   const posMatch = content.match(/##\s*\d*\.?\s*Positive\s*Prompt\s*\n+([\s\S]*?)(?=\n##\s|\n#\s|$)/i);
   const negMatch = content.match(/##\s*\d*\.?\s*Negative\s*Prompt\s*\n+([\s\S]*?)(?=\n##\s|\n#\s|$)/i);
 
-  if (posMatch) {
-    cp = posMatch[1].trim();
-    if (!cp.toLowerCase().includes(POSITIVE_PREFIX.split(",")[0].toLowerCase())) {
-      cp = POSITIVE_PREFIX + ", " + cp;
-    }
-    content = content.replace(posMatch[0], posMatch[0].replace(posMatch[1], cp));
+  const posResult = injectPrefix(posMatch, POSITIVE_PREFIX);
+  const negResult = injectPrefix(negMatch, NEGATIVE_BASE);
+  if (posMatch) { cp = posResult.text; content = replaceSection(content, posMatch, cp); }
+  if (negMatch) { np = negResult.text; content = replaceSection(content, negMatch, np); }
+
+  // Fallback: position-based for legacy LLM output
+  if (!posResult.injected) {
+    const legacyPos = content.match(/##\s*2\.?\s*.*?\n+([\s\S]*?)(?=\n##\s*3\.|\n##\s*\d|\n#\s|$)/i);
+    const lr = injectPrefix(legacyPos, POSITIVE_PREFIX);
+    if (legacyPos) { cp = lr.text; content = replaceSection(content, legacyPos, cp); }
   }
-  if (negMatch) {
-    np = negMatch[1].trim();
-    if (!np.toLowerCase().includes(NEGATIVE_BASE.split(",")[0].toLowerCase())) {
-      np = NEGATIVE_BASE + ", " + np;
-    }
-    content = content.replace(negMatch[0], negMatch[0].replace(negMatch[1], np));
+  if (!negResult.injected) {
+    const legacyNeg = content.match(/##\s*3\.?\s*.*?\n+([\s\S]*?)(?=\n##\s*4\.|\n##\s*\d|\n#\s|$)/i);
+    const lr = injectPrefix(legacyNeg, NEGATIVE_BASE);
+    if (legacyNeg) { np = lr.text; content = replaceSection(content, legacyNeg, np); }
   }
 
-  // Fallback: if headers not found by name, try position-based regex (legacy support)
-  if (!cp || !np) {
-    const s2 = content.match(/##\s*\d*\.?\s*.*?\n+([\s\S]*?)(?=\n##\s*\d|\n#\s|$)/i);
-    const s3 = content.match(/##\s*\d*\.?\s*.*?\n+([\s\S]*?)(?=\n##\s*\d|\n#\s|$)/i);
-    // Only use position-based as last resort for legacy LLM output
-    if (!cp && s2) {
-      const legacyPosMatch = content.match(/##\s*2\.?\s*.*?\n+([\s\S]*?)(?=\n##\s*3\.|\n##\s*\d|\n#\s|$)/i);
-      if (legacyPosMatch) { cp = legacyPosMatch[1].trim(); if (!cp.toLowerCase().includes(POSITIVE_PREFIX.split(",")[0].toLowerCase())) cp = POSITIVE_PREFIX + ", " + cp; content = content.replace(legacyPosMatch[0], legacyPosMatch[0].replace(legacyPosMatch[1], cp)); }
-    }
-    if (!np && s3) {
-      const legacyNegMatch = content.match(/##\s*3\.?\s*.*?\n+([\s\S]*?)(?=\n##\s*4\.|\n##\s*\d|\n#\s|$)/i);
-      if (legacyNegMatch) { np = legacyNegMatch[1].trim(); if (!np.toLowerCase().includes(NEGATIVE_BASE.split(",")[0].toLowerCase())) np = NEGATIVE_BASE + ", " + np; content = content.replace(legacyNegMatch[0], legacyNegMatch[0].replace(legacyNegMatch[1], np)); }
-    }
-  }
-  // Clean up common LLM formatting mistakes in prompts
-  cp = cp.replace(/^[-*•]\s*/, "").replace(/,\s*[-*•]\s*/g, ", ").trim();
-  np = np.replace(/^[-*•]\s*/, "").replace(/,\s*[-*•]\s*/g, ", ").trim();
-  // If crafted prompt is too short (prefix only, no object), try to extract from section 1 or 4
+  // Clean bullets
+  cp = cleanPrompt(cp);
+  np = cleanPrompt(np);
+
+  // Short-prompt fallback: extract object name from section 1
   if (cp.length < 180) {
-    // Extract object name from section 1 as fallback enrichment
     const s1 = content.match(/##\s*\d*\.?\s*Object\s*Name[\s\S]*?\n+([\s\S]*?)(?=\n##\s|\n#\s|$)/i);
     if (s1) {
       const name = s1[1].replace(/^[-*•]\s*/gm, "").replace(/\*\*/g, "").trim().split("\n")[0].trim();

@@ -275,7 +275,7 @@ export async function callLLMStructured<T>(
   const response1 = await callLLM(systemPrompt, userMessage, {
     ...options,
     structured: true,
-    temperature: 0.1, // Low temp for structured output
+    temperature: options?.temperature ?? 0.1, // Low temp for structured output (respect caller override)
   });
 
   const result1 = parseAndValidate(response1.content, schema, fallback, agentName);
