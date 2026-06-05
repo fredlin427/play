@@ -1,36 +1,40 @@
 """
-Local Stable Diffusion Service
+Z-Image-Turbo Local Image Generation Service
 
-Provides a free local text-to-image API using SD Turbo (fast, 4 steps).
-Falls back to SD 1.5 if SD Turbo fails.
+Wraps sd-cli.exe (GGUF-based Z-Image-Turbo) as an HTTP API.
 
 Endpoints:
   POST /generate          - Generate images from text prompt
-  GET  /health             - Health check
-
-Usage:
-  python main.py           # Starts on http://127.0.0.1:8001
+  GET  /health            - Health check
 """
 
-import io
 import os
 import time
-import json
 import hashlib
+import subprocess
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-import torch
-from PIL import Image
 
-# ── FastAPI App ─────────────────────────────────────────────────────
-app = FastAPI(
-    title="Local Stable Diffusion Service",
-    version="0.1.0",
-    description="Free local text-to-image for 3D printing workflow.",
-)
+# ── Paths ──────────────────────────────────────────────────────────────
+ZIMAGE_DIR = Path(os.environ.get(
+    "ZIMAGE_DIR",
+    r"C:\Users\mdssc\Downloads\Z-Image-Turbo-Windows-main\Z-Image-Turbo-Windows-main",
+))
+
+SD_CLI = str(ZIMAGE_DIR / "sd_bin" / "sd-cli.exe")
+MODEL_PATH = str(ZIMAGE_DIR / "models" / "zimage" / "z_image_turbo_Q6_K.gguf")
+VAE_PATH = str(ZIMAGE_DIR / "models" / "vae" / "ae.safetensors")
+LLM_PATH = str(ZIMAGE_DIR / "models" / "llm" / "Qwen3-4B-Instruct-2507-Q4_K_M.gguf")
+LORA_DIR = str(ZIMAGE_DIR / "models" / "loras")
+
+OUTPUT_DIR = Path(__file__).parent.parent / "uploads" / "images"
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+# ── FastAPI ────────────────────────────────────────────────────────────
+app = FastAPI(title="Z-Image-Turbo Service", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -39,19 +43,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Output directory ────────────────────────────────────────────────
-OUTPUT_DIR = Path(__file__).parent.parent / "uploads" / "images"
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-
-# ── Request/Response ────────────────────────────────────────────────
 class GenerateRequest(BaseModel):
     prompt: str
     negative_prompt: str = ""
     width: int = Field(default=512, ge=256, le=1024)
     height: int = Field(default=512, ge=256, le=1024)
-    num_images: int = Field(default=4, ge=1, le=4)
-    num_inference_steps: int = Field(default=4, ge=1, le=10)
-    guidance_scale: float = Field(default=0.0, ge=0.0, le=7.5)
+    num_images: int = Field(default=1, ge=1, le=4)
+    num_inference_steps: int = Field(default=9, ge=4, le=30)
+    guidance_scale: float = Field(default=7.0, ge=1.0, le=20.0)
 
 class GeneratedImage(BaseModel):
     url: str
@@ -62,125 +61,74 @@ class GenerateResponse(BaseModel):
     images: list[GeneratedImage]
     status: str = "completed"
 
-# ── Model loading ───────────────────────────────────────────────────
-pipe = None
-MODEL_ID = None
-
-def load_model():
-    """Load SD Turbo (fast, 1-4 steps) with CPU offload for 8GB VRAM."""
-    global pipe, MODEL_ID
-
-    try:
-        from diffusers import AutoPipelineForText2Image
-
-        MODEL_ID = "stabilityai/sd-turbo"
-        print(f"[SD] Loading {MODEL_ID}...")
-
-        pipe = AutoPipelineForText2Image.from_pretrained(
-            MODEL_ID,
-            torch_dtype=torch.float16,
-            variant="fp16",
-        )
-
-        # Move to GPU with memory-efficient settings
-        if torch.cuda.is_available():
-            pipe.to("cuda")
-            print(f"[SD] Loaded on CUDA ({torch.cuda.get_device_name(0)})")
-        else:
-            print("[SD] CUDA not available, using CPU (will be slow)")
-
-    except Exception as e:
-        print(f"[SD] SD Turbo failed to load: {e}")
-        print("[SD] Trying SD 1.5 as fallback...")
-        try:
-            from diffusers import StableDiffusionPipeline
-
-            MODEL_ID = "runwayml/stable-diffusion-v1-5"
-            pipe = StableDiffusionPipeline.from_pretrained(
-                MODEL_ID,
-                torch_dtype=torch.float16,
-                safety_checker=None,  # Disable safety checker for 3D printing use case
-            )
-            if torch.cuda.is_available():
-                pipe.to("cuda")
-                pipe.enable_attention_slicing()  # Save VRAM
-            print(f"[SD] SD 1.5 loaded on {'CUDA' if torch.cuda.is_available() else 'CPU'}")
-        except Exception as e2:
-            print(f"[SD] SD 1.5 also failed: {e2}")
-            print("[SD] No model available. Service will return 503.")
-
-# ── Endpoints ───────────────────────────────────────────────────────
-
-@app.on_event("startup")
-async def startup():
-    load_model()
-
 @app.get("/health")
 async def health():
+    cli_ok = os.path.isfile(SD_CLI)
+    model_ok = os.path.isfile(MODEL_PATH)
     return {
-        "status": "ok" if pipe is not None else "no_model",
-        "model": MODEL_ID or "none",
-        "cuda": torch.cuda.is_available(),
-        "device": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "cpu",
+        "status": "ok" if (cli_ok and model_ok) else "missing_files",
+        "model": "Z-Image-Turbo Q6 GGUF",
+        "cuda": True,
+        "device": "NVIDIA GeForce RTX 4060 Laptop GPU",
     }
 
 @app.post("/generate", response_model=GenerateResponse)
 async def generate(req: GenerateRequest):
-    if pipe is None:
-        raise HTTPException(status_code=503, detail="Model not loaded. Check server logs.")
+    for label, path in [("CLI", SD_CLI), ("Model", MODEL_PATH), ("VAE", VAE_PATH), ("LLM", LLM_PATH)]:
+        if not os.path.isfile(path):
+            raise HTTPException(status_code=503, detail=f"{label} not found: {path}")
 
+    results = []
     try:
-        with torch.inference_mode():
-            images = pipe(
-                prompt=req.prompt,
-                negative_prompt=req.negative_prompt or None,
-                width=req.width,
-                height=req.height,
-                num_images_per_prompt=min(req.num_images, 4),
-                num_inference_steps=req.num_inference_steps,
-                guidance_scale=req.guidance_scale if MODEL_ID != "stabilityai/sd-turbo" else 0.0,
-            ).images
+        for i in range(req.num_images):
+            filename = f"zimage_{hashlib.md5(f'{req.prompt}_{time.time()}_{i}'.encode()).hexdigest()[:12]}.png"
+            out_path = str(OUTPUT_DIR / filename)
+            seed = int(time.time() * 1000 + i * 7777) % (2**31)
 
-        results = []
-        for i, img in enumerate(images):
-            # Generate unique filename
-            hash_input = f"{req.prompt}_{time.time()}_{i}".encode()
-            file_hash = hashlib.md5(hash_input).hexdigest()[:12]
-            filename = f"sd_{file_hash}.png"
-            filepath = OUTPUT_DIR / filename
+            cmd = [
+                SD_CLI,
+                "--diffusion-model", MODEL_PATH, "--vae", VAE_PATH, "--llm", LLM_PATH,
+                "--lora-model-dir", LORA_DIR,
+                "-p", req.prompt,
+                "-n", req.negative_prompt or "",
+                "--cfg-scale", str(req.guidance_scale),
+                "--steps", str(req.num_inference_steps),
+                "-H", str(req.height), "-W", str(req.width),
+                "-s", str(seed), "--rng", "cuda",
+                "-o", out_path, "-v",
+            ]
 
-            # Save
-            img.save(str(filepath), "PNG")
+            print(f"[ZImage] {req.width}x{req.height} steps={req.num_inference_steps} cfg={req.guidance_scale} seed={seed}")
+            print(f"[ZImage] Prompt: {req.prompt[:120]}...")
 
-            results.append(GeneratedImage(
-                url=f"/api/files/images/{filename}",
-                width=img.width,
-                height=img.height,
-            ))
+            t0 = time.perf_counter()
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            elapsed = time.perf_counter() - t0
+            print(f"[ZImage] Done in {elapsed:.1f}s (exit {r.returncode})")
 
-        print(f"[SD] Generated {len(results)} images ({req.width}x{req.height})")
+            if r.returncode != 0:
+                raise HTTPException(status_code=500, detail=f"CLI failed: {r.stderr[-300:]}")
 
+            if not os.path.isfile(out_path):
+                raise HTTPException(status_code=500, detail=f"No output: {out_path}")
+
+            results.append(GeneratedImage(url=f"/api/files/images/{filename}", width=req.width, height=req.height))
+
+        print(f"[ZImage] Generated {len(results)} images")
         return GenerateResponse(images=results, status="completed")
 
-    except torch.cuda.OutOfMemoryError:
-        raise HTTPException(
-            status_code=507,
-            detail="Out of GPU memory. Try reducing image size (512x512) or num_images (1)."
-        )
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=504, detail="Timeout (5 min)")
+    except HTTPException:
+        raise
     except Exception as e:
-        print(f"[SD] Generation failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
-# ── Main ────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     import uvicorn
-    print("=" * 60)
-    print("Local Stable Diffusion Service")
-    print("=" * 60)
-    print(f"CUDA available: {torch.cuda.is_available()}")
-    if torch.cuda.is_available():
-        print(f"GPU: {torch.cuda.get_device_name(0)}")
-        print(f"VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
-    print("=" * 60)
+    print("=" * 50)
+    print("Z-Image-Turbo Service (GGUF Q6)")
+    print(f"CLI:  {'OK' if os.path.isfile(SD_CLI) else 'MISSING'}")
+    print(f"Model: {'OK' if os.path.isfile(MODEL_PATH) else 'MISSING'} ({os.path.getsize(MODEL_PATH)/1e9:.1f}GB)" if os.path.isfile(MODEL_PATH) else "Model: MISSING")
+    print("=" * 50)
     uvicorn.run(app, host="127.0.0.1", port=8001)
