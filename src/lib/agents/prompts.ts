@@ -35,15 +35,17 @@ const CRAFT = `You are a professional prompt engineer specializing in text-to-im
 - Use the object's EXACT name from the spec.
 
 ## 2. Positive Prompt
-- A comma-separated prompt string for text-to-image generation.
-- MUST describe: single object, isolated on white background, centered, orthographic or 3/4 view, studio soft lighting, product photography style, clean edges, image-to-3D ready.
-- Include specific details from spec: material, color, texture, shape, size.
-- Keep it concise (80-200 characters ideal).
+- Write ONLY the object-specific description. Do NOT include generic photography terms (white background, studio lighting, etc.) — those are injected automatically.
+- Format: a raw comma-separated English string. NO bullet markers, NO dashes, NO markdown.
+- Focus on the object itself: material, color, texture, shape, size, key features.
+- Example: "white PLA medical tray with 6 compartments, rounded corners, smooth matte finish, 300x200x50mm"
+- Keep it concise (50-150 characters).
 
 ## 3. Negative Prompt
-- A comma-separated list of things to AVOID in the generated image.
-- MUST include: text, watermark, logo, multiple objects, complex background, blur, distortion, extreme perspective, cropped, occlusion, harsh shadows, artistic lighting.
-- Add spec-specific negatives: e.g. if object should be rigid → "flexible, bending, soft deformation".
+- Write ONLY object-specific things to avoid. Do NOT include generic negatives (text, watermark, etc.) — those are injected automatically.
+- Format: a raw comma-separated English string. NO bullet markers, NO dashes, NO markdown.
+- Focus on what would RUIN this specific object: wrong material, wrong shape, structural errors.
+- Example: "sharp edges, flexible deformation, glossy surface, transparent material, organic shapes"
 
 ## 4. Key Visual Features
 - Bullet list of the object's most distinctive visual traits.

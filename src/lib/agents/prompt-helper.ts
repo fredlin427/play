@@ -80,7 +80,7 @@ export async function craft(spec: DesignSpec, lang: Lang = "en", feedback?: stri
   const feedbackBlock = feedback ? `\n\nUSER FEEDBACK / REVISION REQUEST:\n"${feedback}"\n\nIncorporate this feedback. Adjust the relevant sections accordingly.` : "";
   const result = await callLLM(
     getPrompt("craft", lang),
-    `SPEC:\n${specJson}\n\n${langHint}\nGenerate 9-section prompt. Positive MUST start: "${POSITIVE_PREFIX}". Negative MUST include: "${NEGATIVE_BASE}".${feedbackBlock}`,
+    `SPEC:\n${specJson}\n\n${langHint}\nGenerate 9-section prompt. IMPORTANT: Section 2 write ONLY object-specific description (NOT generic terms like \"white background, studio lighting\" — those are auto-injected). Section 3 write ONLY object-specific negatives. NO bullet markers (-, *, •) in sections 2 and 3 — raw comma-separated text only.${feedbackBlock}`,
     { temperature: 0.3, maxTokens: 4096 }
   );
   let rawContent = result.content || "";
@@ -135,5 +135,20 @@ export async function craft(spec: DesignSpec, lang: Lang = "en", feedback?: stri
       if (legacyNegMatch) { np = legacyNegMatch[1].trim(); if (!np.toLowerCase().includes(NEGATIVE_BASE.split(",")[0].toLowerCase())) np = NEGATIVE_BASE + ", " + np; content = content.replace(legacyNegMatch[0], legacyNegMatch[0].replace(legacyNegMatch[1], np)); }
     }
   }
+  // Clean up common LLM formatting mistakes in prompts
+  cp = cp.replace(/^[-*•]\s*/, "").replace(/,\s*[-*•]\s*/g, ", ").trim();
+  np = np.replace(/^[-*•]\s*/, "").replace(/,\s*[-*•]\s*/g, ", ").trim();
+  // If crafted prompt is too short (prefix only, no object), try to extract from section 1 or 4
+  if (cp.length < 180) {
+    // Extract object name from section 1 as fallback enrichment
+    const s1 = content.match(/##\s*\d*\.?\s*Object\s*Name[\s\S]*?\n+([\s\S]*?)(?=\n##\s|\n#\s|$)/i);
+    if (s1) {
+      const name = s1[1].replace(/^[-*•]\s*/gm, "").replace(/\*\*/g, "").trim().split("\n")[0].trim();
+      if (name && name.length > 3 && !cp.includes(name.slice(0, 20))) {
+        cp = cp + ", " + name;
+      }
+    }
+  }
+
   return { content, craftedPrompt: cp, negativePrompt: np };
 }
