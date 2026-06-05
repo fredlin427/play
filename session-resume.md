@@ -5,10 +5,10 @@
 ```bash
 cd C:\Users\mdssc\summerintern\mdssc-master
 
-# Terminal 1: Ollama
+# Terminal 1: Ollama (qwen2.5:7b)
 ollama serve
 
-# Terminal 2: Stable Diffusion (free T2I, port 8001)
+# Terminal 2: Z-Image-Turbo (port 8001)
 cd sd_service && python main.py
 
 # Terminal 3: Next.js (port 3000)
@@ -18,100 +18,77 @@ npm run dev
 LLM_PROVIDER=mock npm run dev
 ```
 
-## Current State (2026-06-04 18:00)
+## Current State (2026-06-05)
 
 ### Architecture
 
 ```
-User describes object → /api/prompt/extract (LLM extracts structured spec)
-  → /api/prompt/ask (LLM asks 1-3 targeted questions with options)
-  → User clicks answers → spec fills → progress advances
-  → /api/prompt/craft (9-section prompt package with hardcoded 2D constraints)
-  → /api/hunyuan/text-to-image (Hunyuan → SD Turbo → mock)
-  → /api/hunyuan/image-to-3d (Hunyuan → mock cube)
-  → /api/blender/process (Blender subprocess → mock)
+User input (text/sketch/image/model) → /api/prompt/extract (LLM → DesignSpec)
+  → /api/prompt/ask (LLM-driven adaptive Q&A, single question per round)
+  → Template assembles base prompt → LLM polish (positive + negative)
+  → /api/hunyuan/text-to-image (Z-Image-Turbo only, no Hunyuan)
+    → 1 View or 4 Views (front/back/left/right orthographic)
+  → /api/hunyuan/image-to-3d (mock cube)
+  → /api/blender/process (mock)
   → STL download
 ```
 
 ### Key Design Decisions
 
-1. **Single-turn LLM calls** — no conversation tracking in LLM. Extract/Ask/Craft are independent calls.
-2. **Hardcoded 2D constraints** — positive prompt prefix/suffix injected via post-processing: "single object only, isolated on white background, orthographic view, studio lighting, product photography, 3D-ready"
-3. **LLM model: qwen2.5:7b (default)** — best balance of quality and speed for RTX 4060 8GB. Also available: qwen2.5:3b (fast), qwen2.5:14b (best quality, needs SD stopped).
-4. **Language**: detectLang on first user message, lock for entire session. CJK 3x weight, 8% threshold.
-5. **Frontend-driven state** — spec progress, askedFields tracking, question rendering all in React state.
-6. **DesignSpec v2**: meta (inputType, assetType, generationGoal, style) + subject + visual + structure + composition + dimensions + useCase
-7. **9-Section Craft Output**: Object Name → Positive Prompt → Negative Prompt → Key Visual Features → Material → Geometric Structure → View → Dimensions → Generation Notes
-8. **Thinking model support**: CoT/reasoning blocks from models like qwen3.5 are stripped before section parsing.
+1. **Z-Image-Turbo only** — all Hunyuan API code removed. `textToImage()` → local SD directly. No timeout delays.
+2. **Multi-view generation** — `multiView:true` generates 4 images (front/back/left/right). Each view has independent prompt + negative. Directional words stripped from base prompt before view suffix applied.
+3. **LLM polish for BOTH prompts** — positive AND negative prompts get LLM polish. Negative is object-specific (wrong materials, colors, structural errors).
+4. **Template + LLM hybrid Q&A** — LLM decides question → hard-filter validates field name → template fallback if invalid. Only trusts "done" with 3+ filled fields.
+5. **All 4 input modes functional** — Sketch exports dataUrl, Image/Model uploads feed context into extract pipeline. Start button works with files only.
+6. **Language**: 繁體中文 for zh, English for en. All system prompts separated.
+7. **DesignSpec v2**: meta + subject + visual + structure + composition + dimensions + useCase
 
 ### Key Files
 
 | File | Purpose |
 |------|---------|
-| `src/app/create/page.tsx` | Main UX: input → extract → Q&A → progress → craft → result |
-| `src/lib/agents/prompt-helper.ts` | extract(), ask(), craft() — three LLM call functions |
-| `src/lib/agents/prompts.ts` | System prompts for extract/ask/craft (craft = 50-line detailed spec) |
-| `src/lib/schemas.ts` | DesignSpec v2, ExtractSpec, AskQuestion, fallbacks |
-| `src/lib/hunyuan/client.ts` | T2I/I2T3D API with SD fallback + mock (port 8001) |
-| `src/lib/llm.ts` | LLM client: reasoning field fix, JSON repair, extractJson, thinking-strip |
+| `src/app/create/page.tsx` | Main UX: 4 input modes → Q&A → spec editor → prompt display → image gen |
+| `src/lib/agents/prompt-helper.ts` | `extract()` / `ask()` / `craft()` — three core functions |
+| `src/lib/agents/prompt-template.ts` | Template Q&A, `buildSDPrompt()`, `getNextQuestion()` fallback |
+| `src/lib/agents/prompts.ts` | System prompts: EXTRACT/ASK/CRAFT (zh + en, 繁體中文) |
+| `src/lib/agents/field-tiers.ts` | Field priorities: REQUIRED/IMPORTANT/OPTIONAL, termination thresholds |
+| `src/lib/agents/coverage.ts` | Coverage tracking, `shouldTerminate` |
+| `src/lib/agents/question-banks.ts` | Per-asset-type question templates |
+| `src/lib/hunyuan/client.ts` | Z-Image-Turbo T2I client (no Hunyuan), mock fallback |
+| `src/lib/hunyuan/types.ts` | Clean request/response types |
+| `src/lib/llm.ts` | LLM client: OpenAI-compatible, `extractJson()`, thinking-strip |
 | `src/lib/i18n.ts` | Language detection + LangContext |
 | `src/lib/storage.ts` | File I/O for uploads/ |
-| `src/app/api/prompt/extract/route.ts` | POST: text → spec |
-| `src/app/api/prompt/ask/route.ts` | POST: spec → questions |
-| `src/app/api/prompt/craft/route.ts` | POST: spec (+ feedback) → 9-section prompt |
-| `src/app/api/hunyuan/text-to-image/route.ts` | T2I proxy |
-| `src/app/api/hunyuan/image-to-3d/route.ts` | I2T3D proxy |
-| `prisma/schema.prisma` | 10 models (SQLite) |
-
-### Three-Layer Fallback
-
-| Layer | T2I | I2T3D | Blender |
-|-------|-----|-------|---------|
-| Production | Hunyuan API | Hunyuan API | Local Blender |
-| Dev | SD Turbo (CUDA) | Mock cube GLB | Mock processing |
-| Mock | Colored PNG | Mock cube GLB | Mock STL |
+| `src/app/api/prompt/extract/route.ts` | POST: text → DesignSpec |
+| `src/app/api/prompt/ask/route.ts` | POST: spec + context → next question |
+| `src/app/api/prompt/craft/route.ts` | POST: spec → LLM polish positive + negative |
+| `src/app/api/hunyuan/text-to-image/route.ts` | T2I: single or 4-view orthographic |
+| `src/app/api/hunyuan/image-to-3d/route.ts` | I2T3D: mock cube |
+| `prisma/schema.prisma` | SQLite: 10 models |
+| `sd_service/main.py` | Z-Image-Turbo FastAPI (CUDA, port 8001) |
+| `.claude/skills/end-of-day.md` | End-of-day routine |
 
 ### Available Models
 
-| Model | Size | Speed | Quality | Notes |
-|-------|------|-------|---------|-------|
-| qwen2.5:3b | 1.9 GB | ~2s | Poor | Only use for quick tests |
-| qwen3.5:4b | 3.4 GB | — | — | Thinking model, not suitable for prompt gen |
-| **qwen2.5:7b** | **4.7 GB** | **~8s** | **Good** | **Default — best balance** |
-| qwen2.5:14b | 9.0 GB | ~20s | Best | Stop SD first to free VRAM |
+| Model | Size | Speed | Notes |
+|-------|------|-------|-------|
+| **qwen2.5:7b** | 4.7 GB | ~3-5s | **Default** — Q&A, extract, craft, polish |
+| qwen2.5:3b | 1.9 GB | ~2s | Light fallback |
+| qwen2.5:14b | 9.0 GB | ~30s | Best quality (stop SD first) |
+| Z-Image-Turbo Q6 GGUF | 5.3 GB | ~50s/img | Flow-matching CFG=1.0, 8 steps |
+
+### Q&A Field Validation
+
+- Valid fields: `material, color, dimensions, shape, surface, edges, components, style, features`
+- LLM must return valid field name → hard-filter rejects invalid → template fallback
+- "done" only trusted with 3+ filled fields
 
 ### Environment (.env)
 
 ```bash
 LLM_PROVIDER=local
-LOCAL_LLM_MODEL=qwen2.5:7b                    # ← Updated from qwen2.5:3b
-HUNYUAN_BASE_URL=http://localhost:8080/v1      # Update when deployed
-HUNYUAN_API_KEY=your-key
+LOCAL_LLM_MODEL=qwen2.5:7b
 SD_SERVICE_URL=http://127.0.0.1:8001
+SD_SERVICE_ENABLED=true
 BLENDER_PATH=blender
 ```
-
-### Common Tasks
-
-```bash
-npm run build          # TypeScript check + build
-npx prisma generate    # After schema changes
-npx prisma db push     # Sync SQLite
-npm run dev            # Start dev server
-
-# Model management
-ollama list            # Check installed models
-ollama pull qwen2.5:7b # Install recommended model
-```
-
-### Today's Fixes (Phase 7)
-
-See `2026-06-04-開發日誌.md` for full details. Summary:
-1. CRAFT system prompt rewritten (1 line → 50 lines with 9-section spec)
-2. Regex post-processing now matches by header text, not position
-3. Feedback parameter now passes through to LLM
-4. Mock mode outputs proper 9-section format
-5. ask() uses callLLMStructured with auto-retry
-6. Extract booleans (hasHoles, isHollow, etc.) no longer hardcoded
-7. styleNotes saves 2000 chars (was 200)
-8. Thinking model CoT stripping support
