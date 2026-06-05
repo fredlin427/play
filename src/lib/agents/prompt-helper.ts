@@ -133,7 +133,26 @@ export async function ask(
   const skippedList = context.skippedFields.length > 0 ? `Skipped: ${context.skippedFields.join(", ")} (don't re-ask)` : "";
 
   // LLM decides: what to ask next, or if we're done
-  const prompt = `You are helping a user describe an object for 3D-printable product photography image generation.
+  const langTag = zh ? "繁體中文" : "English";
+  const prompt = zh
+    ? `你正在協助用戶描述一個用於 3D 列印產品攝影的物件。
+
+目前已收集的資訊：
+${known.length > 0 ? known.join("\n") : "（尚未收集任何資訊）"}
+
+${askedList ? `已經問過：${askedList}` : ""}
+${skippedList ? `用戶跳過：${skippedList}（不要再問）` : ""}
+
+你的任務：
+1. 如果還缺少關鍵資訊，產生 1 個問題，附帶 3-6 個可點擊選項。
+2. 針對這個特定物件，問當前最重要的問題。
+3. 自適應：香蕉只需要約 4 題。醫療櫃需要約 10 題。不要過度追問。
+4. 如果資訊已足夠寫出詳細的產品描述，回傳 DONE。
+5. 問題必須針對這個特定物件。禁止通用模板問題。
+6. 選項中必須包含「不確定」。
+7. 全部使用繁體中文。`
+
+    : `You are helping a user describe an object for 3D-printable product photography image generation.
 
 Current knowledge:
 ${known.length > 0 ? known.join("\n") : "(nothing yet)"}
@@ -147,17 +166,14 @@ Your job:
 3. Adapt to the object: a banana needs ~4 questions. A cabinet needs ~10. Don't over-ask.
 4. If you have enough to write a detailed product description, return "DONE".
 5. Questions MUST be tailored to this specific object. Never ask generic questions.
-6. Include "不確定" / "Unsure" as an option.
-
-Output valid JSON ONLY:
-If asking: {"action":"ask","field":"descriptive_key","question":"...","options":["A","B","C","Unsure"],"message":"friendly hint"}
-If done: {"action":"done","message":"All info collected"}`;
+6. Include "Unsure" as an option.
+7. Use English only.`;
 
   try {
     const result = await callLLMStructured(
       zh
-        ? "你是一位設計顧問，協助用戶描述 3D 列印物件。根據物件類型自適應提問。簡單物件少問，複雜物件多問。輸出 JSON。"
-        : "You are a design consultant helping describe objects for 3D printing. Adapt questions to the object. Simple objects = fewer questions. Complex = more. Output JSON.",
+        ? "你是設計顧問。協助用戶描述 3D 列印物件。根據物件類型自適應提問。只輸出 JSON。全部使用繁體中文。"
+        : "You are a design consultant. Help describe objects for 3D printing. Adapt questions to the object. Output JSON only. Use English only.",
       prompt,
       z.object({
         action: z.enum(["ask", "done"]),
