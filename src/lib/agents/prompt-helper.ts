@@ -135,30 +135,47 @@ export async function ask(
   // LLM decides: what to ask next, or if we're done
   const langTag = zh ? "繁體中文" : "English";
   const prompt = zh
-    ? `針對這個物件問下一個問題。
+    ? `你正在協助用戶描述一個用於 3D 列印產品攝影的物件。
 
-已知：${known.length > 0 ? known.join("，") : "無"}
-${askedList ? `已問過：${askedList}` : ""}
-${skippedList ? `跳過：${skippedList}` : ""}
+目前已收集的資訊：
+${known.length > 0 ? known.join("\n") : "（尚未收集任何資訊）"}
 
-選最重要的缺失資訊問 1 題，附選項。針對此物件。資訊足夠時回 DONE。
-只輸出 JSON：{"action":"ask","field":"key","question":"問題","options":["A","B","不確定"],"message":"提示"} 或 {"action":"done","message":"ok"}`
+${askedList ? `已經問過：${askedList}` : ""}
+${skippedList ? `用戶跳過：${skippedList}（不要再問）` : ""}
 
-    : `Ask the NEXT question about this object for product photography.
+你的任務：
+1. 如果還缺少關鍵資訊，產生 1 個問題，附帶 3-6 個可點擊選項。
+2. 針對這個特定物件，問當前最重要的問題。
+3. 自適應難度：香蕉只需要約 4 題。醫療櫃需要約 10 題。不要過度追問但也不要漏掉關鍵細節。
+4. 如果資訊已足夠寫出詳細的產品描述，回傳 DONE。
+5. 問題必須針對這個特定物件。禁止通用模板問題。
+6. 選項中必須包含「不確定」。
+7. 全部使用繁體中文。
+8. 只輸出 JSON，不要其他文字。`
 
-Known: ${known.length > 0 ? known.join(", ") : "nothing yet"}
+    : `You are helping a user describe an object for 3D-printable product photography image generation.
+
+Current knowledge:
+${known.length > 0 ? known.join("\n") : "(nothing yet)"}
+
 ${askedList}
 ${skippedList}
 
-Choose the most important missing detail and ask ONE question with options. Be specific to this object. When enough info collected, return DONE.
-
-Output ONLY: {"action":"ask","field":"key","question":"...","options":["A","B","Unsure"],"message":"..."} or {"action":"done","message":"ok"}`;
+Your job:
+1. If critical info is still missing, generate ONE question with 3-6 clickable options.
+2. Ask about what's MOST important to know next for THIS specific object.
+3. Adapt to the object: a banana needs ~4 questions. A cabinet needs ~10. Don't over-ask but don't miss key details.
+4. If you have enough to write a detailed product description, return DONE.
+5. Questions MUST be tailored to this specific object. Never ask generic questions.
+6. Include "Unsure" as an option.
+7. Use English only.
+8. Output ONLY JSON, no other text.`;
 
   try {
     const result = await callLLMStructured(
       zh
-        ? "你是設計顧問。根據已知資訊，決定下一題問什麼。只輸出 JSON，不要其他文字。繁體中文。"
-        : "You are a design consultant. Based on known info, decide the next question. Output ONLY JSON, no other text.",
+        ? "你是設計顧問，協助用戶描述 3D 列印物件。根據物件類型自適應提問難度。簡單物件少問，複雜物件多問。只輸出 JSON。全部使用繁體中文。"
+        : "You are a design consultant helping describe objects for 3D printing. Adapt question depth to object complexity. Simple objects = fewer questions. Complex = more. Output JSON only. Use English only.",
       prompt,
       z.object({
         action: z.enum(["ask", "done"]),
