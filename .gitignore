@@ -37,9 +37,11 @@ yarn-error.log*
 /prisma/dev.db
 /prisma/dev.db-journal
 
-# uploads
+# uploads / generated outputs
 /uploads
 /uploads/*
+/photo
+/_debug_prompt.txt
 
 # Python
 /__pycache__

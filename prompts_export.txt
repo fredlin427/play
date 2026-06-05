@@ -1,0 +1,456 @@
+===== #1  e'we'w'q  (v1)  2026-06-04T05:42:58 =====
+
+POSITIVE:
+A clean studio background, isometric view, with consistent lighting and a plain white background, featuring a product in full isolation, showcasing smooth glossy surface texture, rendered photorealistically, from multiple angles that are all consistent in lighting. The object fills ~70% of the frame and has no occlusion or complex backgrounds.
+
+NEGATIVE:
+blurry, dark, shadows, grain, noise, text, watermark, logo, multiple objects, cluttered, background objects, occlusion, perspective distortion, fisheye, wide angle, depth of field, bokeh, complex background, HDR, overexposed, underexposed
+
+
+===== #2  e'we'w'q  (v2)  2026-06-04T05:43:24 =====
+
+POSITIVE:
+A product photography view of a large smartphone, centered and filling ~70% of frame, with studio lighting, plain white background, sharp edges, smooth surface texture, in consistent lighting across views; no occlusion or negative elements.
+
+NEGATIVE:
+blurry, dark, shadows, grain, noise, text, watermark, logo, multiple objects, cluttered, background objects, occlusion, perspective distortion, fisheye, wide angle, depth of field, bokeh, complex background, HDR, overexposed, underexposed
+
+
+===== #3  飛機！  (v1)  2026-06-04T06:23:13 =====
+
+POSITIVE:
+正面視圖，攝影棚燈光，純白背景，技術插畫風格，無遮擋，各視角燈光一致，乾淨的工作室背景
+
+NEGATIVE:
+模糊、黑暗、陰影、顆粒、噪點、文字、浮水印、標誌、多個物體、雜亂、背景物體、遮擋、透視失真、魚眼、廣角、景深、散景、複雜背景、HDR、過曝、欠曝
+
+
+===== #4  飛機！  (v2)  2026-06-04T06:24:22 =====
+
+POSITIVE:
+正面視圖，攝影棚燈光，純白背景，技術插畫風格，無遮擋，各視角燈光一致，主體占畫面約70%，細節層次描述銳利邊緣和紅色車的表面紋理（啞光），比例正確，使用技術插畫風格
+
+NEGATIVE:
+模糊、黑暗、陰影、顆粒、噪點、文字、浮水印、標誌、多個物體、雜亂、背景物體、遮擋、透視失真、魚眼、廣角、景深、散景、複雜背景、HDR、過曝、欠曝
+
+
+===== #5  111  (v1)  2026-06-04T06:29:20 =====
+
+POSITIVE:
+A product photography view of a sleek silver smartphone in an isometric perspective with clean studio lighting and plain white background, filling ~70% of the frame; detail level: sharp edges, smooth surface texture; style: product photography; no occlusion; consistent lighting across views
+
+NEGATIVE:
+blurry, dark, shadows, grain, noise, text, watermark, logo, multiple objects, cluttered, background objects, occlusion, perspective distortion, fisheye, wide angle, depth of field, bokeh, complex background, HDR, overexposed, underexposed
+
+
+===== #6  apple  (v1)  2026-06-04T06:31:31 =====
+
+POSITIVE:
+A product photography view of an apple with a three-quarter angle, even diffused lighting, plain white background, sharp edges and smooth surface texture filling ~70% of the frame, styleNotes: photorealistic render
+
+NEGATIVE:
+blurry, dark, shadows, grain, noise, text, watermark, logo, multiple objects, cluttered, background objects, occlusion, perspective distortion, fisheye, wide angle, depth of field, bokeh, complex background, HDR, overexposed, underexposed
+
+
+===== #7  蘋果  (v1)  2026-06-04T06:38:57 =====
+
+POSITIVE:
+一個紅色的蘋果，正面視角，啞光塑膠表面，極簡風格，攝影棚燈光，純白背景，無遮擠，居中構圖，正交投影，3D可列印設計
+
+NEGATIVE:
+
+
+
+===== #8  test  (v1)  2026-06-04T07:31:05 =====
+
+POSITIVE:
+3-section adjustable phone stand, side view, minimalist style, metal, product photography, studio lighting, white background, centered, 3D-printable design
+
+NEGATIVE:
+blurry, dark, shadows, text, watermark, complex background, occlusion, perspective distortion
+
+
+===== #9  蘋果  (v1)  2026-06-04T07:42:24 =====
+
+POSITIVE:
+A 3D-printable object, front view, product photography style, studio lighting, white background.
+
+NEGATIVE:
+blurry, dark, shadows, text, watermark, complex background
+
+
+===== #10  飛機·  (v1)  2026-06-04T07:49:35 =====
+
+POSITIVE:
+大型(20-30cm)木紋質感物品、正面視圖、自然有機風格、產品攝影、攝影棚燈光、白色背景、居中構圖、3D可列印設計
+
+NEGATIVE:
+模糊、黑暗、陰影、文字、浮水印、複雜背景、遮擋、透視失真
+
+
+===== #11  test  (v2)  2026-06-04T07:57:59 =====
+
+POSITIVE:
+**English:**
+"Front view of a sleek, high-gloss metal product (material: metal with glossy finish). The object is a rectangular prism shape with smooth curves and detailed panel lines. The entire object is rendered in front view. It has a clean white background. The camera angle is slightly above the horizontal centerline to emphasize the smoothness and shiny surface of the metal. The lighting is soft, even, and highlights the glossy finish clearly without any harsh reflections or shadows. The render style is product render (material-based). No text, watermark, or logo. Avoid extreme perspective, complex backgrounds, hands, people, blurred details, unrealistic thin parts, or disconnected fragments. Use a centered composition with clear outer contours."
+
+**Chinese:**
+"正面视角下的金属产品外观渲染（材质：金属，光滑表面）。物体的形状为一个带有平滑曲线和精细面板线条的长方体。整个对象以正面视图进行渲染。背景为纯白色。相机角度略高于水平中心线，以突出金属的光滑度和光泽表面。光线柔和均匀，清晰地凸显出金属的光亮质感，没有强烈的反射或阴影。渲染风格是产品外观渲染（材质为主）。不包含文字、水印或logo。避免极端透视效果、复杂背景、手部、人物、模糊细节、不现实的薄部分或断开连接的部分。使用中心构图，并且有清晰的外轮廓。"
+
+NEGATIVE:
+**English:**
+"No text, watermark, or logo. No multiple objects. Clean white background. Single subject only. Full object in frame, no cropping. Front view. No extreme perspective. Clear silhouette with clean outer contours. No occlusion. Avoid hands/hands holding, complex backgrounds, people/standing on desk, blurred details, unrealistic thin parts, disconnected fragments, messy silhouettes, and extreme perspectives."
+
+**Chinese:**
+"无文字、水印或logo。无多个物体。纯白色背景。单个主题。整个对象在画框内，没有裁剪。正面视图。避免极端透视效果。有清晰的轮廓，并且外轮廓干净整洁。无遮挡。避免手部/手部持有、复杂背景、人物/站在桌面上、模糊细节、不现实的薄部分、断开连接的部分、杂乱的轮廓以及极端透视效果。"
+
+
+===== #12  蘋果·  (v1)  2026-06-04T07:59:12 =====
+
+POSITIVE:
+subject: large resin sculpture, shape: natural organic form, structure: clean and well-defined silhouette, material: glossy resin, color: white or light gray background, composition: centered, camera angle: front view, render style: clear outer edges, gentle studio lighting, no text watermark, no cropped object, single connected mesh, no floating parts, no extra objects.
+
+NEGATIVE:
+no text, no watermark, multiple objects, cropped object, complex background, hands, people, blur, low quality, deformed structure, extreme perspective, random extra parts, disconnected fragments, messy silhouette, unrealistic thin parts.
+
+
+===== #13  test  (v3)  2026-06-04T08:03:08 =====
+
+POSITIVE:
+A single object in front view, centered on a white background. The "3????????" features are clearly visible, including its distinctive shape and design elements. It has smooth, polished surfaces and subtle bevels along the edges for added detail. The lighting is soft and even with no harsh shadows or reflections. The style is clean and industrial.
+
+English: 
+A sleek, modern 3-section adjustable phone stand in front view, centered on a white background. Features clearly visible including its distinctive shape and design elements. Smooth, polished surfaces with subtle bevels along the edges for added detail. Lighting is soft and even with no harsh shadows or reflections. Style is clean and industrial.
+
+Chinese:
+一款现代简约的3节可调手机架，正视图置于纯白背景上。细节清晰可见，包括其独特的形状和设计元素。表面光滑且边缘有微妙的倒角以增加细节。光线柔和均匀，没有明显的阴影或反光。风格简洁明快。
+
+NEGATIVE:
+Exclude multiple objects, cropped subject, complex background, hands/hair/extra parts, extreme perspective, deformed structure, text/watermark.
+
+English:
+No text or watermark. No multiple subjects. Cropped object excluded. Complex backgrounds excluded. Hands and hair excluded. Extreme perspectives excluded. Deformed structures excluded. No extra parts included.
+
+Chinese:
+不包含多个对象、裁剪主体、复杂背景、手/头发/额外部分、极端透视、变形结构和文本水印。
+
+
+===== #14  蘋果  (v1)  2026-06-04T08:10:26 =====
+
+POSITIVE:
+A high-quality, detailed "蘋果" model with smooth surface textures and a realistic appearance.
+
+NEGATIVE:
+A low-resolution, blurry or distorted "蘋果" image without clear details or proper proportions.
+
+
+===== #15  apple  (v1)  2026-06-04T08:11:00 =====
+
+POSITIVE:
+A ripe apple with smooth skin and a slight red tint, the center part has started to sprout, detailed rendering in high resolution.
+
+NEGATIVE:
+a green or unripe apple with rough skin and no signs of sprouting
+
+
+===== #16  蘋果  (v1)  2026-06-04T08:13:56 =====
+
+POSITIVE:
+A glass apple with a transparent and translucent appearance, designed to look like a real apple.
+
+NEGATIVE:
+A normal plastic or wooden apple without any transparency effects.
+
+
+===== #17  蘋果  (v1)  2026-06-04T08:43:27 =====
+
+POSITIVE:
+A vibrant yellow apple with a smooth red surface, perfectly spherical and lifelike in appearance.
+
+NEGATIVE:
+A distorted or misshapen apple, not showing any bright or vivid colors, lacking a smooth texture.
+
+
+===== #18  test  (v4)  2026-06-04T08:46:16 =====
+
+POSITIVE:
+I will create a detailed image of a minimalist 3-section adjustable phone stand made of white matte plastic. The object is positioned on a flat surface from the front view angle, showcasing its clean and minimalistic design with a non-slip base at the bottom. The composition includes the entire structure without any background elements. Use studio lighting to highlight the smooth texture and subtle glossiness of the material. Render style should be product photography to emphasize the object's sleek appearance. Ensure the render is ready for 3D use, preserving detailed textures and clean edges.
+
+NEGATIVE:
+Include no text, watermarks, or logos in the image. Exclude multiple objects, complex backgrounds, hands, people, blur effects, deformed structures, extreme perspectives, disconnected fragments, messy silhouettes, and any parts of the phone stand that are not part of the main object.
+
+
+===== #19  蘋果·  (v1)  2026-06-04T08:47:13 =====
+
+POSITIVE:
+A clean and minimalist apple symbol (蘋果·). The shape is a circle with a small dot inside it. The material is made of smooth metal with a polished finish. The color is silver gray. The texture is smooth, reflecting the metallic sheen. The view angle is front-on, centered in the frame. The composition emphasizes the simplicity and elegance of the design. The background should be white or light grey. The lighting should be studio-style, with soft shadows to highlight the details. The render style should be product photography, focusing on clarity and detail. The 3D-readiness constraint is that it must be a single object without any additional elements.
+
+NEGATIVE:
+Any text, watermark, logo, multiple objects, cropped images, complex backgrounds, hands, people, blur effects, deformed or distorted structure, extreme perspectives, disconnected parts, messy silhouettes, and any object-specific exclusions (such as the apple symbol).
+
+
+===== #20  test  (v5)  2026-06-04T08:49:12 =====
+
+POSITIVE:
+single object only, isolated on plain white background, centered composition, orthographic front view, full object completely in frame with no cropping, clean sharp silhouette, studio soft even lighting with no harsh shadows, product photography style, technical render, clearly defined edges and materials, suitable for image-to-3D generation
+white matte plastic 3-section adjustable phone stand, minimal design, anti-slip base, smooth surface, clean lines, clear material definition, visible edge details, white background, product shot, technical render, 3D-generation-ready
+
+NEGATIVE:
+text, watermark, logo, signature, multiple objects, cluttered scene, complex background, natural environment, outdoor, room, table, floor, wall, hands, people, animals, blur, depth of field, bokeh, motion blur, lens flare, grain, noise, low quality, distorted, deformed, extreme perspective, fisheye, wide angle, cropped, cut off, occlusion, shadows on background, harsh shadows, dramatic lighting, artistic lighting, creative composition
+
+
+===== #21  蘋果
+  (v1)  2026-06-04T08:58:57 =====
+
+POSITIVE:
+single object only, isolated on plain white background, centered composition, orthographic front view, full object in frame no cropping, clean sharp silhouette, studio soft even lighting no harsh shadows, product photography style, technical render, clearly defined edges and materials, suitable for image-to-3D generation
+
+NEGATIVE:
+text, watermark, logo, signature, multiple objects, cluttered scene, complex background, natural environment, outdoor, room, table, floor, wall, hands, people, animals, blur, depth of field, bokeh, motion blur, lens flare, grain, noise, low quality, distorted, deformed, extreme perspective, fisheye, wide angle, cropped, cut off, occlusion, harsh shadows, dramatic lighting, artistic lighting, creative composition
+
+
+===== #22  蘋果  (v1)  2026-06-04T09:05:25 =====
+
+POSITIVE:
+
+
+NEGATIVE:
+
+
+
+===== #23  蘋果·  (v1)  2026-06-04T09:10:28 =====
+
+POSITIVE:
+single object only, isolated on plain white background, centered composition, orthographic front view, full object in frame no cropping, clean sharp silhouette, studio soft even lighting no harsh shadows, product photography style, technical render, clearly defined edges and materials, suitable for image-to-3D generation
+
+NEGATIVE:
+text, watermark, logo, signature, multiple objects, cluttered scene, complex background, natural environment, outdoor, room, table, floor, wall, hands, people, animals, blur, depth of field, bokeh, motion blur, lens flare, grain, noise, low quality, distorted, deformed, extreme perspective, fisheye, wide angle, cropped, cut off, occlusion, harsh shadows, dramatic lighting, artistic lighting, creative composition
+
+
+===== #24  蘋果  (v1)  2026-06-04T09:18:04 =====
+
+POSITIVE:
+
+
+NEGATIVE:
+
+
+
+===== #25  蘋果·  (v1)  2026-06-04T09:25:10 =====
+
+POSITIVE:
+
+
+NEGATIVE:
+
+
+
+===== #26  Test Medical Tray  (v1)  2026-06-04T09:44:21 =====
+
+POSITIVE:
+-single object only, isolated on white background, centered composition, front or 3/4 view, full object in frame, clean silhouette, studio soft lighting, product photography, technical render, clear edges and materials, image-to-3D ready
+
+NEGATIVE:
+-text, watermark, logo, multiple objects, complex background, blur, distortion, extreme perspective, cropped, occlusion, harsh shadows, artistic lighting
+
+
+===== #27  蘋果·  (v1)  2026-06-04T09:46:51 =====
+
+POSITIVE:
+single object only, isolated on white background, centered composition, front or 3/4 view, full object in frame, clean silhouette, studio soft lighting, product photography, technical render, clear edges and materials, image-to-3D ready
+
+NEGATIVE:
+text, watermark, logo, multiple objects, complex background, blur, distortion, extreme perspective, cropped, occlusion, harsh shadows, artistic lighting
+
+
+===== #28  Test Medical Tray  (v2)  2026-06-04T09:47:19 =====
+
+POSITIVE:
+-single object only, isolated on white background, centered composition, front or 3/4 view, full object in frame, clean silhouette, studio soft lighting, product photography, technical render, clear edges and materials, image-to-3D ready
+
+NEGATIVE:
+-text, watermark, logo, multiple objects, complex background, blur, distortion, extreme perspective, cropped, occlusion, harsh shadows, artistic lighting
+
+
+===== #29  Test Medical Tray  (v3)  2026-06-04T09:49:08 =====
+
+POSITIVE:
+
+
+NEGATIVE:
+
+
+
+===== #30  Test Medical Tray  (v4)  2026-06-04T09:52:09 =====
+
+POSITIVE:
+single object only, isolated on white background, centered composition, front or 3/4 view, full object in frame, clean silhouette, studio soft lighting, product photography, technical render, clear edges and materials, image-to-3D ready, rectangular shape with rounded corners, six compartments, smooth matte finish, white color, PLA material
+
+NEGATIVE:
+text, watermark, logo, multiple objects, complex background, blur, distortion, extreme perspective, cropped, occlusion, harsh shadows, artistic lighting, flexible, bending, soft deformation
+
+
+===== #31  medical forceps holder  (v1)  2026-06-05T00:54:30 =====
+
+POSITIVE:
+- single object only, isolated on white background, centered composition, front or 3/4 view, full object in frame, clean silhouette, studio soft lighting, product photography, technical render, clear edges and materials, image-to-3D ready
+
+NEGATIVE:
+- text, watermark, logo, multiple objects, complex background, blur, distortion, extreme perspective, cropped, occlusion, harsh shadows, artistic lighting
+
+
+===== #32  medical forceps holder  (v2)  2026-06-05T00:55:12 =====
+
+POSITIVE:
+- single object only, isolated on white background, centered composition, front or 3/4 view, full object in frame, clean silhouette, studio soft lighting, product photography, technical render, clear edges and materials, image-to-3D ready
+
+NEGATIVE:
+- text, watermark, logo, multiple objects, complex background, blur, distortion, extreme perspective, cropped, occlusion, harsh shadows, artistic lighting
+
+
+===== #33  medical forceps holder  (v3)  2026-06-05T00:58:02 =====
+
+POSITIVE:
+single object only, isolated on white background, centered composition, front or 3/4 view, full object in frame, clean silhouette, studio soft lighting, product photography, technical render, clear edges and materials, image-to-3D ready, - white PLA forceps holder with 5 slots for surgical forceps, rectangular shape, smooth matte finish, rounded edges, vertical wall-mounted position
+
+NEGATIVE:
+text, watermark, logo, multiple objects, complex background, blur, distortion, extreme perspective, cropped, occlusion, harsh shadows, artistic lighting, - flexible deformation, glossy surface, transparent material, organic shapes, sharp edges, open top, non-vertical orientation
+
+
+===== #34  medical forceps holder  (v4)  2026-06-05T01:12:38 =====
+
+POSITIVE:
+single object only, isolated on white background, centered composition, front or 3/4 view, full object in frame, clean silhouette, studio soft lighting, product photography, technical render, clear edges and materials, image-to-3D ready, white PLA forceps holder with 5 slots for surgical forceps, smooth matte finish, rounded edges, clean and sterile appearance, medical equipment feel, subtle drainage holes, wall-mounted vertical orientation
+
+NEGATIVE:
+text, watermark, logo, multiple objects, complex background, blur, distortion, extreme perspective, cropped, occlusion, harsh shadows, artistic lighting, sharp edges, flexible deformation, glossy surface, transparent material, organic shapes, unclean appearance, non-medical design elements, large size, misplaced slots, no drainage holes
+
+
+===== #35  蘋果
+  (v1)  2026-06-05T01:16:20 =====
+
+POSITIVE:
+single object only, isolated on white background, centered composition, front or 3/4 view, full object in frame, clean silhouette, studio soft lighting, product photography, technical render, clear edges and materials, image-to-3D ready, 紅色的蘋果, 圓形, 光滑的皮膚, 小斑點, 中等大小
+
+NEGATIVE:
+text, watermark, logo, multiple objects, complex background, blur, distortion, extreme perspective, cropped, occlusion, harsh shadows, artistic lighting, 黃色的蘋果, 複雜的形狀, 不規則的表面, 太大的斑點, 畸形的蘋果
+
+
+===== #36  蘋果·
+  (v1)  2026-06-05T04:07:04 =====
+
+POSITIVE:
+single object only, isolated on white background, centered composition, front or 3/4 view, full object in frame, clean silhouette, studio soft lighting, product photography, technical render, clear edges and materials, image-to-3D ready, 僅撰寫物件特定的描述。請勿包含一般的攝影術語（白色背景、工作室燈光等）——這些將自動注入。
+- 格式：純英文字串，以逗號分隔。請勿使用項目符號、破折號或 markdown。
+- 專注於物件本身：材質、顏色、紋理、形狀、尺寸、關鍵特徵。
+- 範例："red resin apple, spherical shape, smooth glossy finish, rounded edges, 80mm in diameter"
+
+NEGATIVE:
+僅撰寫物件特定的要避免事項。請勿包含一般的負面詞（text, watermark 等）——這些將自動注入。
+- 格式：純英文字串，以逗號分隔。請勿使用項目符號、破折號或 markdown。
+- 專注於會破壞此特定物件的因素：錯誤材質、錯誤形狀、結構錯誤。
+- 範例："green apple, rough surface, matte finish, irregular shape"
+
+
+===== #37  香蕉  (v1)  2026-06-05T04:17:03 =====
+
+POSITIVE:
+single object only, isolated on white background, centered composition, front or 3/4 view, full object in frame, clean silhouette, studio soft lighting, product photography, technical render, clear edges and materials, image-to-3D ready, 僅撰寫物件特定的描述。請勿包含一般的攝影術語（白色背景、工作室燈光等）——這些將自動注入。
+- 格式：純英文字串，以逗號分隔。請勿使用項目符號、破折號或 markdown。
+- 專注於物件本身：材質、顏色、紋理、形狀、尺寸、關鍵特徵。
+- 範例："yellow, smooth surface, cylindrical shape, 150x25mm"
+- 保持簡潔（50-150 字元）。
+
+NEGATIVE:
+僅撰寫物件特定的要避免事項。請勿包含一般的負面詞（text, watermark 等）——這些將自動注入。
+- 格式：純英文字串，以逗號分隔。請勿使用項目符號、破折號或 markdown。
+- 專注於會破壞此特定物件的因素：錯誤材質、錯誤形狀、結構錯誤。
+- 範例："green, rough surface, irregular shape, transparent material"
+- 保持簡潔（50-150 字元）。
+
+
+===== #38  香蕉  (v1)  2026-06-05T04:21:49 =====
+
+POSITIVE:
+single object only, isolated on white background, centered composition, front or 3/4 view, full object in frame, clean silhouette, studio soft lighting, product photography, technical render, clear edges and materials, image-to-3D ready, yellow, smooth, cylindrical, single object
+
+NEGATIVE:
+text, watermark, logo, blur
+
+
+===== #39  香蕉
+  (v1)  2026-06-05T04:33:48 =====
+
+POSITIVE:
+single object only, isolated on white background, centered composition, front or 3/4 view, full object in frame, clean silhouette, studio soft lighting, product photography, technical render, clear edges and materials, image-to-3D ready, banana, yellow, cylindrical, smooth, realistic
+
+NEGATIVE:
+text, watermark, logo, blur
+
+
+===== #40  蘋果  (v1)  2026-06-05T04:36:02 =====
+
+POSITIVE:
+single object only, isolated on white background, centered composition, front or 3/4 view, full object in frame, clean silhouette, studio soft lighting, product photography, technical render, clear edges and materials, image-to-3D ready, red, smooth, spherical, high-resolution resin, realistic
+
+NEGATIVE:
+text, watermark, logo, blur
+
+
+===== #41  banaan
+  (v1)  2026-06-05T05:06:25 =====
+
+POSITIVE:
+single object only, isolated on white background, centered composition, front or 3/4 view, full object in frame, clean silhouette, studio soft lighting, product photography, technical render, clear edges and materials, image-to-3D ready, yellow, smooth, TPU, curved cylinder, 400mm long, 50mm diameter, tapered ends, no sharp angles, no rough texture, consistent curvature, no flat spots
+
+NEGATIVE:
+green color, rough surface, rubbery texture, hard material, square cross-section, multiple colors, segmented shape, cracks or fissures, dents or indentations, sharp corners, flat top or bottom, asymmetrical shape, overhanging parts >45 degrees, thin walls <2mm
+
+
+===== #42  香蕉
+  (v1)  2026-06-05T06:07:46 =====
+
+POSITIVE:
+single object only, isolated on white background, centered composition, front or 3/4 view, full object in frame, clean silhouette, studio soft lighting, product photography, technical render, clear edges and materials, image-to-3D ready, yellow, smooth texture, cylindrical shape, 305x48x16mm, no holes or grooves, no moving parts, not hollow
+
+NEGATIVE:
+text, watermark, logo, multiple objects, complex background, blur, distortion, extreme perspective, cropped, occlusion, harsh shadows, artistic lighting, holes, grooves, sharp edges, glossy finish, transparent parts, dark colors, rust, uneven gaps
+
+
+===== #43  香蕉  (v1)  2026-06-05T06:20:30 =====
+
+POSITIVE:
+single object, white background, studio lighting, product photo, 3D-ready, 香蕉, 樹脂 (高精度), yellow, 300-600mm, cylindrical, smooth
+
+NEGATIVE:
+text, watermark, logo, multiple objects, background clutter, blur, distortion, harsh shadows
+
+
+===== #44  香蕉  (v1)  2026-06-05T06:21:55 =====
+
+POSITIVE:
+single object, white background, studio lighting, product photo, 3D-ready, 香蕉, 矽膠, yellow, 大於 600mm, cylindrical, smooth
+
+NEGATIVE:
+text, watermark, logo, multiple objects, background clutter, blur, distortion, harsh shadows
+
+
+===== #45  香蕉  (v1)  2026-06-05T06:30:07 =====
+
+POSITIVE:
+single object, white background, studio lighting, product photo, 3D-ready, a 灰色 PLA (剛性) 香蕉, 圓柱形 shape, 300-600mm, 無子部件, 光滑 surface, with holes
+
+NEGATIVE:
+text, watermark, logo, multiple objects, background clutter, blur, distortion, harsh shadows, metallic, transparent, solid without holes
+
+
+===== #46  蘋果·
+  (v1)  2026-06-05T06:33:58 =====
+
+POSITIVE:
+single object, white background, studio lighting, product photo, 3D-ready, a 黃色 樹脂 (高精度) 蘋果, 香蕉現狀 shape, 大於 600mm, 無子部件, 其他 surface
+
+NEGATIVE:
+text, watermark, logo, multiple objects, background clutter, blur, distortion, harsh shadows
+
+
