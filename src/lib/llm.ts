@@ -137,6 +137,46 @@ export async function callLLM(
   return mockResponse(systemPrompt, userMessage);
 }
 
+/**
+ * Streaming LLM call — yields content tokens as they arrive.
+ * Falls back to mock (non-streaming) if LLM is unavailable.
+ */
+export async function* callLLMStream(
+  systemPrompt: string,
+  userMessage: string,
+  options?: { temperature?: number; maxTokens?: number }
+): AsyncGenerator<string, void, undefined> {
+  const config = getConfig();
+  const client = getClient();
+
+  if (client) {
+    try {
+      const stream = await client.chat.completions.create({
+        model: config.model,
+        temperature: options?.temperature ?? 0.5,
+        max_tokens: options?.maxTokens ?? 500,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userMessage },
+        ],
+        stream: true,
+      });
+
+      for await (const chunk of stream) {
+        const delta = chunk.choices[0]?.delta?.content;
+        if (delta) yield delta;
+      }
+      return;
+    } catch (error) {
+      console.error("[LLM] Streaming failed:", error);
+    }
+  }
+
+  // Fallback: mock response as a single chunk
+  const mock = mockResponse(systemPrompt, userMessage);
+  yield mock.content;
+}
+
 // ── Privacy-Aware Logging ────────────────────────────────────────────
 
 /**

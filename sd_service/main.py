@@ -10,6 +10,7 @@ Endpoints:
 
 import os
 import time
+import asyncio
 import hashlib
 import subprocess
 from pathlib import Path
@@ -102,12 +103,24 @@ async def generate(req: GenerateRequest):
             print(f"[ZImage] Prompt: {req.prompt[:120]}...")
 
             t0 = time.perf_counter()
-            r = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            try:
+                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=300)
+            except asyncio.TimeoutError:
+                proc.kill()
+                await proc.wait()
+                raise HTTPException(status_code=504, detail="Timeout (5 min)")
             elapsed = time.perf_counter() - t0
-            print(f"[ZImage] Done in {elapsed:.1f}s (exit {r.returncode})")
+            returncode = proc.returncode or 0
+            print(f"[ZImage] Done in {elapsed:.1f}s (exit {returncode})")
 
-            if r.returncode != 0:
-                raise HTTPException(status_code=500, detail=f"CLI failed: {r.stderr[-300:]}")
+            if returncode != 0:
+                err_text = stderr.decode() if stderr else "Unknown error"
+                raise HTTPException(status_code=500, detail=f"CLI failed: {err_text[-300:]}")
 
             if not os.path.isfile(out_path):
                 raise HTTPException(status_code=500, detail=f"No output: {out_path}")

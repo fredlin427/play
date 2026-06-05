@@ -55,18 +55,38 @@ function setField(spec: DesignSpec, path: string, value: string): DesignSpec {
   return result;
 }
 
+const QA_STORAGE_KEY = "qa_session_v1";
+
+function loadSession() {
+  try {
+    const raw = localStorage.getItem(QA_STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return null;
+}
+
+function saveSession(data: Record<string, unknown>) {
+  try {
+    localStorage.setItem(QA_STORAGE_KEY, JSON.stringify(data));
+  } catch {}
+}
+
 function CreatePageInner() {
   const router = useRouter();
   const { lang:toggleLang, setLang, t } = useLang();
+
+  // Restore previous session on mount
+  const saved = loadSession();
+
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [pid, setPid] = useState<string|null>(null);
-  const [convLang, setConvLang] = useState<"zh"|"en"|null>(null);
-  const [msgs, setMsgs] = useState<Array<{role:"user"|"ai";text:string}>>([]);
+  const [pid, setPid] = useState<string|null>(saved?.pid || null);
+  const [convLang, setConvLang] = useState<"zh"|"en"|null>(saved?.convLang || null);
+  const [msgs, setMsgs] = useState<Array<{role:"user"|"ai";text:string}>>(saved?.msgs || []);
 
   // Spec state
-  const [spec, setSpec] = useState<DesignSpec>(EMPTY_SPEC);
-  const [specReady, setSpecReady] = useState(false);
+  const [spec, setSpec] = useState<DesignSpec>(saved?.spec || EMPTY_SPEC);
+  const [specReady, setSpecReady] = useState(saved?.specReady || false);
   const [showSpec, setShowSpec] = useState(false);
   const [progress, setProgress] = useState(0);
 
@@ -104,6 +124,11 @@ function CreatePageInner() {
       questionRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
     }
   }, [questions]);
+
+  // Auto-save session for recovery on refresh (M2: QA persistence)
+  useEffect(() => {
+    saveSession({ pid, convLang, msgs, spec, specReady });
+  }, [pid, convLang, msgs, spec, specReady]);
 
   const updateProgress = (s: DesignSpec) => {
     const cov = getCoverage(s);
@@ -261,10 +286,37 @@ function CreatePageInner() {
   const handleCraft = async () => {
     if (!pid) return;
     setLoading(true); setError(null);
+    // Show streaming preview immediately
+    setResult({ id: "", craftedPrompt: "", negativePrompt: "" });
+
     try {
-      const res = await fetch("/api/prompt/craft", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:pid,spec})});
-      const data = await res.json();
-      setResult(data.promptVersion);
+      const res = await fetch("/api/prompt/craft/stream", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ spec }) });
+      if (!res.ok) throw new Error(`Stream ${res.status}`);
+
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error("No stream body");
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        // Process complete SSE messages
+        const lines = buffer.split("\n\n");
+        buffer = lines.pop() || "";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const data = JSON.parse(line.slice(6));
+            if (data.done) {
+              setResult(prev => prev ? { ...prev, craftedPrompt: data.positive, negativePrompt: data.negative || "" } : { id: "", craftedPrompt: data.positive, negativePrompt: data.negative || "" });
+            } else if (data.token) {
+              setResult(prev => prev ? { ...prev, craftedPrompt: data.full } : { id: "", craftedPrompt: data.full, negativePrompt: "" });
+            }
+          } catch {}
+        }
+      }
     } catch (err: any) { setError(`Craft: ${err.message||String(err)}`); setErrorRetry(()=>handleCraft); }
     finally { setLoading(false); }
   };
@@ -470,10 +522,10 @@ function CreatePageInner() {
                       {loading?<Loader2 className="w-3.5 h-3.5 animate-spin"/>:<RefreshCw className="w-3.5 h-3.5"/>}
                     </Button>
                   </div>
-                  <Button onClick={()=>handleGenImages(false)} disabled={genLoading} variant="outline" className="shrink-0">
+                  <Button onClick={()=>handleGenImages(false)} disabled={genLoading||!result.craftedPrompt} variant="outline" className="shrink-0">
                     {genLoading?<Loader2 className="w-4 h-4 animate-spin mr-1"/>:<ArrowRight className="w-4 h-4 mr-1"/>}1 View
                   </Button>
-                  <Button onClick={()=>handleGenImages(true)} disabled={genLoading} className="shrink-0">
+                  <Button onClick={()=>handleGenImages(true)} disabled={genLoading||!result.craftedPrompt} className="shrink-0">
                     {genLoading?<Loader2 className="w-4 h-4 animate-spin mr-1"/>:<Box className="w-4 h-4 mr-1"/>}4 Views
                   </Button>
                 </div>
@@ -526,8 +578,8 @@ function CreatePageInner() {
                 </div>
                 <div className="space-y-3">
                   <div>
-                    <h4 className="text-xs font-semibold text-green-700 mb-1">Positive Prompt (發給 SD)</h4>
-                    <p className="text-sm bg-green-50 rounded-lg p-3 leading-relaxed break-all font-mono text-xs">{result.craftedPrompt}</p>
+                    <h4 className="text-xs font-semibold text-green-700 mb-1">Positive Prompt (發給 SD) {loading && <Loader2 className="w-3 h-3 animate-spin inline ml-1"/>}</h4>
+                    <p className="text-sm bg-green-50 rounded-lg p-3 leading-relaxed break-all font-mono text-xs">{result.craftedPrompt || (loading ? "Generating..." : "")}</p>
                   </div>
                   <div>
                     <h4 className="text-xs font-semibold text-red-700 mb-1">Negative Prompt</h4>
