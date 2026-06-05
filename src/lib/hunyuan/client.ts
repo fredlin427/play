@@ -135,12 +135,12 @@ async function callLocalSD(
     body: JSON.stringify({
       prompt: request.prompt,
       negative_prompt: request.negativePrompt || "",
-      width: Math.min(request.width || 512, 768),  // SD Turbo works best at 512-768
+      width: Math.min(request.width || 512, 768),
       height: Math.min(request.height || 512, 768),
-      num_images: request.numImages || 4,
-      num_inference_steps: 4,  // SD Turbo: 1-4 steps
+      num_images: request.numImages || 1,  // Z-Image: 1 image at a time (~50s each)
+      num_inference_steps: 8,
     }),
-    signal: AbortSignal.timeout(120000), // 2 min timeout for SD
+    signal: AbortSignal.timeout(600000), // 10 min timeout for Z-Image
   });
 
   if (!response.ok) {

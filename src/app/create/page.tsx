@@ -251,7 +251,7 @@ function CreatePageInner() {
       const proj = await (await fetch(`/api/projects/${pid}`)).json();
       const pv = proj.promptVersions?.[0];
       if (!pv) throw new Error("No version");
-      await fetch("/api/hunyuan/text-to-image", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:pid,promptVersionId:pv.id,prompt:result.craftedPrompt,negativePrompt:result.negativePrompt,numImages:4})});
+      await fetch("/api/hunyuan/text-to-image", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:pid,promptVersionId:pv.id,prompt:result.craftedPrompt,negativePrompt:result.negativePrompt,numImages:1})});
       router.push(`/projects/${pid}`);
     } catch (err: any) { setError(`Gen Images: ${err.message||String(err)}`); setErrorRetry(()=>handleGenImages); }
     finally { setGenLoading(false); }

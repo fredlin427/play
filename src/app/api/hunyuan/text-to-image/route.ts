@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
     const promptVersionId = body?.promptVersionId || "";
     const prompt = body?.prompt || "";
     const negativePrompt = body?.negativePrompt;
-    const numImages = body?.numImages || 4;
+    const numImages = body?.numImages || 1;
 
     if (!projectId || !promptVersionId || !prompt) {
       return NextResponse.json({ error: "projectId, promptVersionId, and prompt are required" }, { status: 400 });
