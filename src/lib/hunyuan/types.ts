@@ -1,12 +1,6 @@
 /**
- * Hunyuan API Types
- *
- * Request/response type definitions for Tencent Hunyuan APIs:
- * - Text-to-Image (T2I)
- * - Image-to-3D (I2T3D)
+ * Image generation types — local Z-Image-Turbo only.
  */
-
-// ── Text-to-Image ──────────────────────────────────────────────────
 
 export interface TextToImageRequest {
   prompt: string;
@@ -14,23 +8,14 @@ export interface TextToImageRequest {
   width?: number;
   height?: number;
   numImages?: number;
-  style?: string;
-}
-
-export interface TextToImageImage {
-  url: string;
-  width: number;
-  height: number;
+  numInferenceSteps?: number;
 }
 
 export interface TextToImageResponse {
-  taskId?: string;
-  images: TextToImageImage[];
-  status: "completed" | "processing" | "failed";
+  images: Array<{ url: string; width: number; height: number }>;
+  status: string;
   error?: string;
 }
-
-// ── Image-to-3D ────────────────────────────────────────────────────
 
 export interface ImageTo3DRequest {
   imageUrl: string;
@@ -38,30 +23,10 @@ export interface ImageTo3DRequest {
 }
 
 export interface ImageTo3DResponse {
-  taskId?: string;
   modelUrl: string;
+  publicPath: string;
   format: "glb" | "obj";
   fileSize: number;
-  status: "completed" | "processing" | "failed";
+  status: string;
   error?: string;
-}
-
-// ── Configuration ──────────────────────────────────────────────────
-
-export interface HunyuanConfig {
-  baseUrl: string;
-  apiKey: string;
-  t2iEndpoint: string;
-  i2t3dEndpoint: string;
-  timeoutMs: number;
-}
-
-export function getHunyuanConfig(): HunyuanConfig {
-  return {
-    baseUrl: process.env.HUNYUAN_BASE_URL || "http://localhost:8080/v1",
-    apiKey: process.env.HUNYUAN_API_KEY || "your-hunyuan-api-key",
-    t2iEndpoint: process.env.HUNYUAN_T2I_ENDPOINT || "/text-to-image",
-    i2t3dEndpoint: process.env.HUNYUAN_I2T3D_ENDPOINT || "/image-to-3d",
-    timeoutMs: parseInt(process.env.HUNYUAN_TIMEOUT_MS || "120000", 10),
-  };
 }

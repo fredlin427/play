@@ -89,6 +89,9 @@ function CreatePageInner() {
   // Sketch/Upload
   const [mode, setMode] = useState<"text"|"sketch"|"image"|"model">("text");
   const [sketchNotes, setSketchNotes] = useState("");
+  const [sketchDataUrl, setSketchDataUrl] = useState<string|null>(null);
+  const [uploadedImages, setUploadedImages] = useState<any[]>([]);
+  const [uploadedModels, setUploadedModels] = useState<any[]>([]);
 
   const cl = convLang || toggleLang;
 
@@ -102,18 +105,30 @@ function CreatePageInner() {
   // ══════════════ Extract ══════════════
 
   const handleExtract = async () => {
-    if (!input.trim()) return;
+    const hasFiles = mode==="sketch" ? !!sketchDataUrl : mode==="image" ? uploadedImages.length > 0 : mode==="model" ? uploadedModels.length > 0 : false;
+    if (!input.trim() && !hasFiles) return;
     setLoading(true); setError(null);
-    setMsgs(prev=>[...prev,{role:"user",text:input}]);
+    setMsgs(prev=>[...prev,{role:"user",text:input || (cl==="zh"?"開始分析...":"Starting analysis...")}]);
 
     try {
       let id = pid;
-      if (!id) { const r=await fetch("/api/projects",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:input.slice(0,80),description:input})}); id=(await r.json()).id; setPid(id); }
+      if (!id) { const r=await fetch("/api/projects",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:input.slice(0,80)||"New Project",description:input})}); id=(await r.json()).id; setPid(id); }
 
       const dl = detectLang(input);
       if (!convLang) setConvLang(dl);
 
-      const text = mode==="sketch" ? `[Sketch]: ${sketchNotes}\n${input}` : input;
+      // Build context-aware input text
+      let text = input;
+      if (mode==="sketch" && sketchDataUrl) {
+        text = `[Sketch attached + Notes: ${sketchNotes || "none"}]\n${input || "Analyze this sketch"}`;
+      } else if (mode==="sketch") {
+        text = `[Sketch]: ${sketchNotes}\n${input}`;
+      } else if (mode==="image") {
+        text = `[Reference Images: ${uploadedImages.length} uploaded]\n${input || "Analyze these reference images and generate a matching 3D-printable prompt"}`;
+      } else if (mode==="model") {
+        text = `[Reference Models: ${uploadedModels.length} uploaded (${uploadedModels.map((m:any)=>m.fileName).join(", ")} )]\n${input || "Analyze this 3D model reference and generate a matching prompt"}`;
+      }
+
       const res = await fetch("/api/prompt/extract", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:id,text})});
       const data = await res.json();
 
@@ -256,14 +271,14 @@ function CreatePageInner() {
     finally { setLoading(false); }
   };
 
-  const handleGenImages = async () => {
+  const handleGenImages = async (multiView = false) => {
     if (!pid||!result) return;
     setGenLoading(true); setError(null);
     try {
       const proj = await (await fetch(`/api/projects/${pid}`)).json();
       const pv = proj.promptVersions?.[0];
       if (!pv) throw new Error("No version");
-      await fetch("/api/hunyuan/text-to-image", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:pid,promptVersionId:pv.id,prompt:result.craftedPrompt,negativePrompt:result.negativePrompt,numImages:1})});
+      await fetch("/api/hunyuan/text-to-image", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:pid,promptVersionId:pv.id,prompt:result.craftedPrompt,negativePrompt:result.negativePrompt,numImages:1,multiView})});
       router.push(`/projects/${pid}`);
     } catch (err: any) { setError(`Gen Images: ${err.message||String(err)}`); setErrorRetry(()=>handleGenImages); }
     finally { setGenLoading(false); }
@@ -336,9 +351,19 @@ function CreatePageInner() {
             <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
               {MODES.map(m=>(<button key={m.key} onClick={()=>setMode(m.key)} className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium ${mode===m.key?"bg-white text-blue-700 shadow-sm":"text-gray-600 hover:text-gray-900"}`}><m.icon className="w-3.5 h-3.5"/><span className="hidden sm:inline">{toggleLang==="zh"?m.zh:m.en}</span></button>))}
             </div>
-            {mode==="sketch"&&<><SketchPad onSave={()=>{}}/><Textarea value={sketchNotes} onChange={e=>setSketchNotes(e.target.value)} placeholder={t("Notes...","備註...")} rows={2} className="resize-none text-sm"/></>}
-            {mode==="image"&&<ReferenceImageUploader projectId={pid} onUpload={()=>{}}/>}
-            {mode==="model"&&<ReferenceModelUploader projectId={pid} onUpload={()=>{}}/>}
+            {mode==="sketch"&&<><SketchPad onSave={(dataUrl)=>{setSketchDataUrl(dataUrl);setUploadedImages([{id:"sketch",fileName:"sketch.png",previewUrl:dataUrl}]);}}/><Textarea value={sketchNotes} onChange={e=>setSketchNotes(e.target.value)} placeholder={cl==="zh"?"備註（形狀、尺寸、材質...）":"Notes (shape, size, material...)"} rows={2} className="resize-none text-sm"/></>}
+            {mode==="image"&&<ReferenceImageUploader projectId={pid} onUpload={(imgs)=>{setUploadedImages(imgs);if(imgs.length>0 && !input.trim()) setInput(cl==="zh"?"請根據這些參考圖生成一個...":"Generate a 3D-printable object based on these reference images...");}}/>}
+            {mode==="model"&&<ReferenceModelUploader projectId={pid} onUpload={(models)=>{setUploadedModels(models);if(models.length>0 && !input.trim()) setInput(cl==="zh"?"請根據這個3D模型生成...":"Generate a matching object based on this 3D model reference...");}}/>}
+
+            {/* File status badge */}
+            {mode!=="text" && (sketchDataUrl||uploadedImages.length>0||uploadedModels.length>0) && (
+              <div className="flex items-center gap-2 text-xs text-green-700 bg-green-50 rounded-lg px-3 py-2">
+                <ImagePlus className="w-3.5 h-3.5"/>
+                {mode==="sketch" && <span>{cl==="zh"?"✓ 草圖已匯出":"✓ Sketch exported"}{sketchNotes?` · ${cl==="zh"?"備註":"notes"}: ${sketchNotes.slice(0,40)}`  :""}</span>}
+                {mode==="image" && <span>{uploadedImages.length} {cl==="zh"?"張參考圖":"reference image(s)"}</span>}
+                {mode==="model" && <span>{uploadedModels.length} {cl==="zh"?"個模型":"model(s)"}: {uploadedModels.map((m:any)=>m.fileName).join(", ")}</span>}
+              </div>
+            )}
 
             {/* Chat messages — natural flow, no scroll jail */}
             <div className="space-y-3">
@@ -413,10 +438,14 @@ function CreatePageInner() {
                 <>
                   {(mode==="text"||mode==="image"||mode==="model")&&(
                     <Textarea value={input} onChange={e=>setInput(e.target.value)}
-                      placeholder={cl==="zh" ? "描述您想創建的物品..." : "Describe what you want to create..."}
+                      placeholder={mode==="image"
+                        ? (cl==="zh" ? "描述參考圖中的物品，或直接描述想要生成的..." : "Describe the object in the reference, or what to generate...")
+                        : mode==="model"
+                        ? (cl==="zh" ? "描述3D模型，或想要生成的變體..." : "Describe the 3D model, or desired variant...")
+                        : (cl==="zh" ? "描述您想創建的物品..." : "Describe what you want to create...")}
                       rows={3} className="resize-none text-sm"/>
                   )}
-                  <Button onClick={handleExtract} disabled={loading||!input.trim()} className="w-full" size="lg">
+                  <Button onClick={handleExtract} disabled={loading||(!input.trim()&&!(sketchDataUrl||uploadedImages.length>0||uploadedModels.length>0))} className="w-full" size="lg">
                     {loading?<Loader2 className="w-4 h-4 animate-spin mr-2"/>:<MessageSquare className="w-4 h-4 mr-2"/>}
                     {t("Start","開始")}
                   </Button>
@@ -431,8 +460,11 @@ function CreatePageInner() {
                       {loading?<Loader2 className="w-3.5 h-3.5 animate-spin"/>:<RefreshCw className="w-3.5 h-3.5"/>}
                     </Button>
                   </div>
-                  <Button onClick={handleGenImages} disabled={genLoading} className="shrink-0">
-                    {genLoading?<Loader2 className="w-4 h-4 animate-spin mr-1"/>:<ArrowRight className="w-4 h-4 mr-1"/>}2D
+                  <Button onClick={()=>handleGenImages(false)} disabled={genLoading} variant="outline" className="shrink-0">
+                    {genLoading?<Loader2 className="w-4 h-4 animate-spin mr-1"/>:<ArrowRight className="w-4 h-4 mr-1"/>}1 View
+                  </Button>
+                  <Button onClick={()=>handleGenImages(true)} disabled={genLoading} className="shrink-0">
+                    {genLoading?<Loader2 className="w-4 h-4 animate-spin mr-1"/>:<Box className="w-4 h-4 mr-1"/>}4 Views
                   </Button>
                 </div>
               ) : (

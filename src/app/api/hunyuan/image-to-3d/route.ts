@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
       data: { status: "model_generating", currentStep: 4 },
     });
 
-    // Call Hunyuan I2T3D
+    // Call I2T3D (mock for now — no local 3D service)
     const model = await imageTo3D({
       imageUrl: sourceImage.imageUrl,
       format: (format as "glb" | "obj") || "glb",
@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
       status: "completed",
     });
   } catch (error) {
-    console.error("[Hunyuan I2T3D] Error:", error);
+    console.error("[I2T3D] Error:", error);
     if (projectId) {
       await prisma.project.update({
         where: { id: projectId },
