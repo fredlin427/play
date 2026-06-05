@@ -343,26 +343,16 @@ function mockResponse(systemPrompt: string, userMessage: string): LLMResponse {
 
   let content: string;
 
-  if (promptLower.includes("intake agent") || promptLower.includes("extract structured")) {
+  if (promptLower.includes("extract structured")) {
     content = mockIntake(userMessage);
-  } else if (promptLower.includes("risk agent") || promptLower.includes("classify risk")) {
-    content = mockRisk(userMessage);
-  } else if (promptLower.includes("clarification agent") || promptLower.includes("missing information")) {
-    content = mockClarification(userMessage);
-  } else if (promptLower.includes("design brief")) {
-    content = mockDesignBrief(userMessage);
-  } else if (promptLower.includes("material agent") || promptLower.includes("material recommendation")) {
-    content = mockMaterial(userMessage);
-  } else if (promptLower.includes("prompt agent") || promptLower.includes("text-to-3d") || promptLower.includes("prompt engineer") || promptLower.includes("9-section prompt")) {
+  } else if (promptLower.includes("design consultant") || promptLower.includes("設計顧問")) {
+    content = mockAsk(userMessage);
+  } else if (promptLower.includes("product-design copywriter") || promptLower.includes("product design copywriter")) {
+    content = mockCraftPositive(userMessage);
+  } else if (promptLower.includes("image-generation prompt engineer") || promptLower.includes("generate concise negative")) {
+    content = mockCraftNegative(userMessage);
+  } else if (promptLower.includes("prompt engineer") || promptLower.includes("9-section prompt")) {
     content = mockPrompt(userMessage);
-  } else if (promptLower.includes("ticket agent") || promptLower.includes("job ticket")) {
-    content = mockTicket(userMessage);
-  } else if (promptLower.includes("sketch understanding") || promptLower.includes("extract design parameters")) {
-    content = mockSketchUnderstanding(userMessage);
-  } else if (promptLower.includes("cad template") || promptLower.includes("choose the best template")) {
-    content = mockCadTemplate(userMessage);
-  } else if (promptLower.includes("revision agent") || promptLower.includes("parse the user's revision")) {
-    content = mockRevision(userMessage);
   } else {
     content = mockGeneral(userMessage);
   }
@@ -644,6 +634,45 @@ Review design brief and confirm dimensions before printing.
 
 ### Engineer Notes
 [To be filled by engineer]`;
+}
+
+// ── Mock: Ask (Q&A question generation) ──────────────────────────────
+
+function mockAsk(input: string): string {
+  // Return a valid question JSON that matches the expected schema
+  const fields = ["material", "color", "dimensions", "shape", "surface", "edge", "components", "style", "details"];
+  const field = fields[Math.floor(input.length % fields.length)];
+  const questions: Record<string, { q: string; opts: string[] }> = {
+    material: { q: "What material will this be made of?", opts: ["PLA", "PETG", "ABS", "Resin", "Metal", "Wood", "Other"] },
+    color: { q: "What color should it be?", opts: ["White", "Grey", "Black", "Blue", "Silver", "Custom", "Other"] },
+    dimensions: { q: "What are the approximate dimensions?", opts: ["<100mm", "100-300mm", "300-600mm", ">600mm", "Other"] },
+    shape: { q: "What is the overall shape?", opts: ["Rectangular box", "Cylindrical", "Irregular/organic", "Flat/tray", "Other"] },
+    surface: { q: "What surface finish?", opts: ["Smooth matte", "Glossy", "Rough/textured", "Brushed metal", "Other"] },
+    edge: { q: "How should edges be treated?", opts: ["Sharp/square", "Slightly rounded", "Beveled/chamfered", "Other"] },
+    components: { q: "What visible components does it have?", opts: ["No special components", "Drawers", "Handles", "Feet/legs", "Other"] },
+    style: { q: "What design style?", opts: ["Modern minimalist", "Industrial", "Medical-grade", "Scandinavian", "Other"] },
+    details: { q: "Any additional visual details?", opts: ["None", "Other"] },
+  };
+  const q = questions[field];
+  return JSON.stringify({ action: "ask", field, question: q.q, options: q.opts, message: "Choose an option or type your own:" });
+}
+
+// ── Mock: Craft Positive ────────────────────────────────────────────
+
+function mockCraftPositive(input: string): string {
+  const nameMatch = input.match(/- Object:\s*(.+)/);
+  const name = nameMatch?.[1] || "object";
+  const colorMatch = input.match(/- Color:\s*(.+)/);
+  const color = colorMatch?.[1] || "white";
+  const matMatch = input.match(/- Material:\s*(.+)/);
+  const material = matMatch?.[1] || "plastic";
+  return `A sleek ${color} ${material} ${name}, clean geometric form with smooth surfaces, centered composition, product photography style, studio lighting, precise proportions, isolated on plain background, 3D-ready render quality`;
+}
+
+// ── Mock: Craft Negative ────────────────────────────────────────────
+
+function mockCraftNegative(_input: string): string {
+  return "text, watermark, logo, multiple objects, background clutter, blur, distortion, harsh shadows, wrong material, wrong color, deformed geometry, missing parts";
 }
 
 // ── Mock: General ────────────────────────────────────────────────────

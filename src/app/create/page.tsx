@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { LangProvider, useLang } from "@/lib/lang-context";
 import { detectLang } from "@/lib/i18n";
@@ -97,6 +97,13 @@ function CreatePageInner() {
   const cl = convLang || toggleLang;
 
   const questionRef = useRef<HTMLDivElement>(null);
+
+  // Scroll to question when a new one appears
+  useEffect(() => {
+    if (questions.length > 0 && questionRef.current) {
+      questionRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [questions]);
 
   const updateProgress = (s: DesignSpec) => {
     const cov = getCoverage(s);
@@ -278,11 +285,11 @@ function CreatePageInner() {
     if (!pid||!result) return;
     setGenLoading(true); setError(null);
     try {
-      const proj = await (await fetch(`/api/projects/${pid}`)).json();
-      const pv = proj.promptVersions?.[0];
-      if (!pv) throw new Error("No version");
-      await fetch("/api/hunyuan/text-to-image", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:pid,promptVersionId:pv.id,prompt:result.craftedPrompt,negativePrompt:result.negativePrompt,numImages:1,multiView})});
-      router.push(`/projects/${pid}`);
+      await fetch("/api/hunyuan/text-to-image", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:pid,promptVersionId:result.id,prompt:result.craftedPrompt,negativePrompt:result.negativePrompt,numImages:1,multiView})});
+      // Stay on page — user can iterate or view images on project page
+      setMsgs(prev=>[...prev,{role:"ai",text:cl==="zh"
+        ? `✅ 圖片已生成！可繼續修改 prompt，或前往專案頁面查看。`
+        : `✅ Images generated! Refine the prompt below, or view on the project page.`}]);
     } catch (err: any) { setError(`Gen Images: ${err.message||String(err)}`); setErrorRetry(()=>handleGenImages); }
     finally { setGenLoading(false); }
   };

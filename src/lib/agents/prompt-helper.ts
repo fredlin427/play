@@ -5,24 +5,20 @@
  * dynamic Q&A for missing fields → craft 9-section prompt.
  */
 
-import { callLLM, callLLMStructured } from "@/lib/llm";
+import { callLLMStructured } from "@/lib/llm";
 import { z } from "zod";
 import {
   ExtractSpecSchema, EXTRACT_FALLBACK,
-  PROMPT_HELPER_FALLBACK,
   DesignSpecSchema, EMPTY_SPEC,
 } from "@/lib/schemas";
-import type { DesignSpec, ExtractSpecOutput, AskQuestionOutput, PromptHelperOutput } from "@/lib/schemas";
+import type { DesignSpec, ExtractSpecOutput, AskQuestionOutput } from "@/lib/schemas";
 import { getPrompt } from "@/lib/agents/prompts";
 import type { Lang } from "@/lib/i18n";
 import { getCoverage, type CoverageReport } from "@/lib/agents/coverage";
 import { TERMINATION } from "@/lib/agents/field-tiers";
 import { getNextQuestion } from "@/lib/agents/prompt-template";
 
-export type { DesignSpec, ExtractSpecOutput, AskQuestionOutput, PromptHelperOutput, AskContext };
-
-const POSITIVE_PREFIX = "single object, white background, studio lighting, product photo, 3D-ready";
-const NEGATIVE_BASE = "text, watermark, logo, multiple objects, background clutter, blur, distortion, harsh shadows";
+export type { DesignSpec, ExtractSpecOutput, AskQuestionOutput, AskContext };
 
 // ═══════════════ Extract ═══════════════
 
@@ -230,8 +226,9 @@ Your job:
     };
 
     return { questions: [question], context: newContext };
-  } catch {
+  } catch (e) {
     // LLM failed — fall back to simple template
+    console.warn("[Ask] LLM call failed, using template fallback:", String(e).slice(0, 100));
     const next = getNextQuestion(spec, [...context.askedFields, ...context.skippedFields], zh ? "zh" : "en");
     if (!next) return { questions: [], context: { ...context, coverage: getCoverage(spec) } };
     return {
@@ -241,91 +238,3 @@ Your job:
   }
 }
 
-// ═══════════════ Craft helpers ═══════════════
-
-/** Inject a prefix into a matched prompt section if not already present. */
-function injectPrefix(match: RegExpMatchArray | null, prefix: string): { text: string; injected: boolean } {
-  if (!match) return { text: "", injected: false };
-  let text = match[1].trim();
-  const firstToken = prefix.split(",")[0].toLowerCase();
-  if (!text.toLowerCase().includes(firstToken)) {
-    text = prefix + ", " + text;
-  }
-  return { text, injected: true };
-}
-
-/** Replace the matched section content within the full content string. */
-function replaceSection(content: string, match: RegExpMatchArray, replacement: string): string {
-  return content.replace(match[0], match[0].replace(match[1], replacement));
-}
-
-/** Clean bullet markers from a comma-separated prompt string. */
-function cleanPrompt(p: string): string {
-  return p.replace(/^[-*•]\s*/, "").replace(/,\s*[-*•]\s*/g, ", ").trim();
-}
-
-// ═══════════════ Craft ═══════════════
-
-export async function craft(spec: DesignSpec, lang: Lang = "en", feedback?: string): Promise<PromptHelperOutput> {
-  const specJson = JSON.stringify(spec, null, 2);
-  const langHint = lang === "zh" ? "Explain in 繁體中文. Prompts in English." : "Explain in English.";
-  const feedbackBlock = feedback ? `\n\nUSER FEEDBACK / REVISION REQUEST:\n"${feedback}"\n\nIncorporate this feedback. Adjust the relevant sections accordingly.` : "";
-  const result = await callLLM(
-    getPrompt("craft", lang),
-    `SPEC:\n${specJson}\n\n${langHint}\nGenerate 9-section prompt. IMPORTANT: Section 2 write ONLY object-specific description (NOT generic terms like \"white background, studio lighting\" — those are auto-injected). Section 3 write ONLY object-specific negatives. NO bullet markers (-, *, •) in sections 2 and 3 — raw comma-separated text only.${feedbackBlock}`,
-    { temperature: 0.3, maxTokens: 4096 }
-  );
-  let rawContent = result.content || "";
-
-  // Strip thinking/reasoning blocks
-  rawContent = rawContent
-    .replace(/<thinking[\s\S]*?<\/thinking>/gi, "")
-    .replace(/<think>[\s\S]*?<\/think>/gi, "")
-    .replace(/^[\s\S]*?thought process:[\s\S]*?(?=##\s*\d\.)/i, "")
-    .trim();
-
-  if (!rawContent.includes("## ") || rawContent.length < 200) {
-    rawContent = result.content;
-  }
-
-  if (!rawContent || rawContent.length < 100) return PROMPT_HELPER_FALLBACK;
-  let content = rawContent; let cp = ""; let np = "";
-
-  // Primary: match by header text
-  const posMatch = content.match(/##\s*\d*\.?\s*Positive\s*Prompt\s*\n+([\s\S]*?)(?=\n##\s|\n#\s|$)/i);
-  const negMatch = content.match(/##\s*\d*\.?\s*Negative\s*Prompt\s*\n+([\s\S]*?)(?=\n##\s|\n#\s|$)/i);
-
-  const posResult = injectPrefix(posMatch, POSITIVE_PREFIX);
-  const negResult = injectPrefix(negMatch, NEGATIVE_BASE);
-  if (posMatch) { cp = posResult.text; content = replaceSection(content, posMatch, cp); }
-  if (negMatch) { np = negResult.text; content = replaceSection(content, negMatch, np); }
-
-  // Fallback: position-based for legacy LLM output
-  if (!posResult.injected) {
-    const legacyPos = content.match(/##\s*2\.?\s*.*?\n+([\s\S]*?)(?=\n##\s*3\.|\n##\s*\d|\n#\s|$)/i);
-    const lr = injectPrefix(legacyPos, POSITIVE_PREFIX);
-    if (legacyPos) { cp = lr.text; content = replaceSection(content, legacyPos, cp); }
-  }
-  if (!negResult.injected) {
-    const legacyNeg = content.match(/##\s*3\.?\s*.*?\n+([\s\S]*?)(?=\n##\s*4\.|\n##\s*\d|\n#\s|$)/i);
-    const lr = injectPrefix(legacyNeg, NEGATIVE_BASE);
-    if (legacyNeg) { np = lr.text; content = replaceSection(content, legacyNeg, np); }
-  }
-
-  // Clean bullets
-  cp = cleanPrompt(cp);
-  np = cleanPrompt(np);
-
-  // Short-prompt fallback: extract object name from section 1
-  if (cp.length < 180) {
-    const s1 = content.match(/##\s*\d*\.?\s*Object\s*Name[\s\S]*?\n+([\s\S]*?)(?=\n##\s|\n#\s|$)/i);
-    if (s1) {
-      const name = s1[1].replace(/^[-*•]\s*/gm, "").replace(/\*\*/g, "").trim().split("\n")[0].trim();
-      if (name && name.length > 3 && !cp.includes(name.slice(0, 20))) {
-        cp = cp + ", " + name;
-      }
-    }
-  }
-
-  return { content, craftedPrompt: cp, negativePrompt: np };
-}

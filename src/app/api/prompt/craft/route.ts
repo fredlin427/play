@@ -29,6 +29,10 @@ export async function POST(request: NextRequest) {
     const edge = designSpec.visual.edgeTreatment || "";
     const style = designSpec.meta.style || "";
     const comp = designSpec.structure.details || "";
+    const viewAngle = designSpec.composition.viewAngle || "";
+    const pose = designSpec.composition.poseOrOrientation || "";
+    const useEnv = designSpec.useCase.environment || "";
+    const useGoal = designSpec.meta.generationGoal || "";
 
     // 3. LLM polishes the positive prompt into a natural flowing paragraph
     const polishPrompt = `Rewrite this structured product data into ONE flowing visual-description paragraph in English.
@@ -91,6 +95,11 @@ ${material ? `- Material: ${material}` : ""}
 ${shape ? `- Shape: ${shape}` : ""}
 ${surf ? `- Surface: ${surf}` : ""}
 ${edge ? `- Edge treatment: ${edge}` : ""}
+${style ? `- Design style: ${style}` : ""}
+${viewAngle ? `- Expected view angle: ${viewAngle}` : ""}
+${pose ? `- Pose/orientation: ${pose}` : ""}
+${useEnv ? `- Environment: ${useEnv}` : ""}
+${useGoal ? `- Purpose: ${useGoal}` : ""}
 ${comp ? `- Components: ${comp}` : ""}
 
 A negative prompt lists physical attributes that must NOT appear: wrong materials, wrong colors, structural errors, surface flaws.
@@ -101,6 +110,8 @@ Now add object-specific negatives. Examples of good negatives:
 - For a white cabinet: "dark colors, neon colors, metal handles, glass panels, transparent"
 - For smooth plastic: "rough texture, wood grain, metallic reflection, glossy surface"
 - For a tray: "thick walls, sharp corners, irregular edges, curved bottom"
+- For wrong environment: "outdoor, nature, ground plane, shadows on floor"
+- For wrong view: "top-down, aerial view, worm eye view, distorted perspective"
 
 Rules:
 - Comma-separated English
@@ -109,7 +120,8 @@ Rules:
 - Think: if the material is X, what materials would be wrong?
 - Think: if the color is Y, what colors would clash?
 - Think: if the shape is Z, what shapes would look wrong?
-- Under 200 characters total
+- Think: if the view angle is A, what angles would be wrong?
+- Under 250 characters total
 - Output ONLY the negative prompt text, nothing else`;
 
       try {

@@ -150,115 +150,13 @@ const ASK_ZH = [
 ].join("\n");
 
 // ═══════════════════════════════════════════════════════════════════════
-// CRAFT — English
-// ═══════════════════════════════════════════════════════════════════════
-const CRAFT_EN = [
-  "You are a prompt engineer for 2D-to-3D image generation. Convert the DesignSpec into a 9-section document with COMPONENT-LEVEL detail.",
-  "Fixed image style: single object, white background, studio lighting, product photography — do NOT add these to prompts.",
-  "",
-  "OUTPUT EXACTLY (use ## markdown headers):",
-  "",
-  "## 1. Object Name & Summary",
-  "Full name, primary purpose, real-world context. If this has sub-components, list them all here.",
-  "",
-  "## 2. Positive Prompt",
-  "A natural comma-separated English phrase describing what the object LOOKS LIKE. Use visual adjectives, not a checklist.",
-  "Describe what IS visible: material textures, colors, shapes, component sizes. Never write what is NOT there (no \"no holes\", \"not hollow\", \"without X\").",
-  "Break down by visible component. BAD (checklist): \"yellow, smooth texture, cylindrical, no holes, not hollow\"",
-  "GOOD (visual description): \"curved yellow cylinder with tapered ends, smooth matte surface, 150mm long, 25mm diameter at center, light brown stem at one end\"",
-  "Do NOT add: white background, studio lighting, single object, 3D-ready, product photo (those are fixed).",
-  "",
-  "## 3. Negative Prompt",
-  "Comma-separated ENGLISH. List physical attributes that must NOT appear. This is where \"no X\" constraints belong.",
-  "Include: wrong materials, wrong colors, structural errors, surface flaws. Be component-specific.",
-  "Example: \"green color, rough texture, flat shape, sharp angular edges, square cross-section\"",
-  "Do NOT add: text, watermark, logo, blur (those are fixed).",
-  "",
-  "## 4. Key Visual Features",
-  "Per-component breakdown. For each visible component, list: color, markings, identifiers, distinctive shape details.",
-  "",
-  "## 5. Material & Surface Properties",
-  "Per-component material breakdown. Frame material, panel material, hardware material. Texture, finish, reflectivity for each.",
-  "",
-  "## 6. Geometric Structure",
-  "Overall shape + per-component geometry. Drawer/compartment dimensions. Holes, handles, wheels, joints. Symmetry notes. Printability: overhangs >45deg, walls <2mm.",
-  "",
-  "## 7. View & Composition",
-  "Camera angle. Framing. Aspect ratio. If multiple interesting angles exist, note the best one.",
-  "",
-  "## 8. Scale & Dimensions",
-  "Overall dimensions (LxWxH in mm) + per-component dimensions in mm. Weight if known. Reference comparison.",
-  "",
-  "## 9. Generation Notes",
-  "Printability per component. Overhangs, support needs, minimum wall thickness. Recommended variations. Camera distance.",
-  "",
-  "CRITICAL RULES:",
-  "1. ALL 9 sections. ## headers exactly.",
-  "2. Sections 2-3: raw comma-separated ENGLISH. NO bullets, NO markdown, NO instructions.",
-  "3. Sections 2-3: write ONLY prompt content.",
-  "4. Component-level detail: name EVERY visible part with its own material, color, dimensions.",
-  "5. Use EXACT numbers in mm. Never vague. Never \"various\" or \"multiple\".",
-].join("\n");
-
-// ═══════════════════════════════════════════════════════════════════════
-// CRAFT — 繁體中文
-// ═══════════════════════════════════════════════════════════════════════
-const CRAFT_ZH = [
-  "你是 2D 轉 3D 圖像的 prompt 工程師。將 DesignSpec 轉換為 9 節文檔，必須包含元件級細節。",
-  "圖像固定風格：單一物件、白色背景、工作室燈光、產品攝影 — 不要加到 prompt 中。",
-  "第 1、4-9 節用繁體中文。第 2、3 節用英文。",
-  "",
-  "必須輸出（用 ## 標題）：",
-  "",
-  "## 1. 物件名稱與摘要",
-  "全名、用途、真實背景。如有子元件，在此全部列出。",
-  "",
-  "## 2. Positive Prompt",
-  "自然的英文逗號分隔短語，描述物件看起來是什麼樣子。用視覺形容詞，不是清單。",
-  "描述看得見的東西：材質質感、顏色、形狀、元件尺寸。禁止寫看不見的東西（不要寫 no holes、not hollow、without X）。",
-  "按可見元件分解。壞（清單式）：\"yellow, smooth texture, cylindrical, no holes, not hollow\"",
-  "好（視覺描述）：\"curved yellow cylinder with tapered ends, smooth matte surface, 150mm long, 25mm diameter at center, light brown stem at one end\"",
-  "不要加：white background, studio lighting, single object, 3D-ready, product photo（已固定）。",
-  "",
-  "## 3. Negative Prompt",
-  "英文逗號分隔。列出絕對不能出現的物理特徵。這就是放 no X 約束的地方。",
-  "包含：錯誤材質、錯誤顏色、結構錯誤、表面缺陷。",
-  "範例：\"green color, rough texture, flat shape, sharp angular edges, square cross-section\"",
-  "不要加：text, watermark, logo, blur（已固定）。",
-  "",
-  "## 4. 關鍵視覺特徵",
-  "每個可見元件逐一描述：顏色、標記、識別特徵、形狀細節。",
-  "",
-  "## 5. 材質與表面屬性",
-  "每個元件的材質：框架材質、面板材質、五金材質。紋理、表面處理、反射率。",
-  "",
-  "## 6. 幾何結構",
-  "整體形狀 + 每個元件的幾何。抽屜/隔間尺寸。孔洞、把手、輪子、接頭。對稱性。可列印性：懸垂>45度、壁厚<2mm。",
-  "",
-  "## 7. 視角與構圖",
-  "相機角度。構圖。長寬比。如有多個有趣角度請備註。",
-  "",
-  "## 8. 尺寸與比例",
-  "整體尺寸（長x寬x高 mm）+ 每個元件尺寸 mm。參考對比。",
-  "",
-  "## 9. 生成備註",
-  "每個元件的可列印性。懸垂、支撐、最小壁厚。建議變化數量。相機距離。",
-  "",
-  "關鍵規則：",
-  "1. 全部 9 節。用 ## 標題。",
-  "2. 第 2-3 節：純英文逗號分隔。禁止項目符號、markdown、指令。",
-  "3. 第 2-3 節：只寫 prompt 內容。",
-  "4. 元件級細節：每個可見零件都要有獨立的材質、顏色、尺寸。",
-  "5. 使用精確 mm 數字。禁止模糊詞（多種、大約）。",
-].join("\n");
-
-// ═══════════════════════════════════════════════════════════════════════
 // Registry
 // ═══════════════════════════════════════════════════════════════════════
+// Note: "craft" prompts removed — craft/polish is now handled inline
+// in the craft route (src/app/api/prompt/craft/route.ts)
 const PROMPTS: Record<string, Record<Lang, string>> = {
   extract: { en: EXTRACT_EN, zh: EXTRACT_ZH },
   ask: { en: ASK_EN, zh: ASK_ZH },
-  craft: { en: CRAFT_EN, zh: CRAFT_ZH },
 };
 
 export function getPrompt(name: string, lang: Lang): string {

@@ -64,18 +64,14 @@ async function callLocalSD(
         height: img.height || 512,
       });
     } else {
-      // Fetch from SD service
-      const imgResponse = await fetch(`${sdUrl}/generate/download/${filename}`);
-      if (imgResponse.ok) {
-        const buffer = Buffer.from(await imgResponse.arrayBuffer());
-        const saved = saveImage(buffer, projectId, `sd_${Date.now()}`);
-        results.push({
-          imageUrl: saved.filePath,
-          publicPath: saved.publicPath,
-          width: img.width || 512,
-          height: img.height || 512,
-        });
-      }
+      console.warn(`[SD] Image file not found on disk: ${filePath}`);
+      // Still return the URL — the file server may serve a cached copy
+      results.push({
+        imageUrl: filePath,
+        publicPath: `/api/files/images/${filename}`,
+        width: img.width || 512,
+        height: img.height || 512,
+      });
     }
   }
 
