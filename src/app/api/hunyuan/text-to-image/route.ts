@@ -22,8 +22,9 @@ export async function POST(request: NextRequest) {
       data: { status: "image_generating", currentStep: 2 },
     });
 
-    // Strip directional words from base prompt so view suffix takes control
-    const neutralPrompt = prompt
+    // Build a SHORT base description (not the long LLM-polished prompt)
+    // Z-Image responds better to short, direct prompts for view control
+    const shortBase = prompt
       .replace(/\bfront[-\s]?facing\b/gi, "")
       .replace(/\bfront\s+view\b/gi, "")
       .replace(/\bthree[-\s]?quarter\b/gi, "")
@@ -31,32 +32,39 @@ export async function POST(request: NextRequest) {
       .replace(/\bquarter\s+view\b/gi, "")
       .replace(/\bcentered\b/gi, "")
       .replace(/\bfacing\s+(the\s+)?camera\b/gi, "")
-      .replace(/,\s*,/g, ",")   // collapse double commas
+      .replace(/studio lighting,?\s*/gi, "")
+      .replace(/product (photography|photo),?\s*/gi, "")
+      .replace(/\bisolated\b,?\s*/gi, "")
+      .replace(/,\s*,/g, ",")
       .replace(/,\s*,\s*/g, ", ")
       .replace(/^\s*,\s*/, "")
       .replace(/\s{2,}/g, " ")
-      .trim();
+      .trim()
+      // Truncate to ~100 chars — short prompts give better view control
+      .split(",").slice(0, 4).join(", ")
+      // Strip leading article so "a single ..." doesn't become "a single A ..."
+      .replace(/^(a|an|A|An)\s+/, "");
 
     const VIEW_DIRECTIONS = [
       {
         label: "front",
-        prompt: `front orthographic view, product photography, ${neutralPrompt}`,
-        negative: `${negativePrompt}, side view, back view, rear, profile, rotated`,
+        prompt: `a single ${shortBase}, viewed from the front, facing the camera directly, front elevation, product shot on white background`,
+        negative: `${negativePrompt}, side view, back view, rear, profile, rotated, turned, angled, multiple objects, two, duplicate`,
       },
       {
         label: "back",
-        prompt: `back orthographic view, rear view, product photography, ${neutralPrompt}`,
-        negative: `${negativePrompt}, front view, front facing, drawers visible, handles visible, door front`,
+        prompt: `a single ${shortBase}, viewed from the back, rear elevation, turned 180 degrees, showing the back side, product shot on white background`,
+        negative: `${negativePrompt}, front view, front facing, face, front side, handles, doors, drawers, multiple objects, two, duplicate`,
       },
       {
         label: "left",
-        prompt: `left side orthographic view, profile view, product photography, ${neutralPrompt}`,
-        negative: `${negativePrompt}, front view, back view, facing camera, 3/4 angle`,
+        prompt: `a single ${shortBase}, viewed from the left side, side profile, left elevation, showing the left face, product shot on white background`,
+        negative: `${negativePrompt}, front view, back view, facing camera directly, face, front, rear, multiple objects, two, duplicate`,
       },
       {
         label: "right",
-        prompt: `right side orthographic view, profile view, product photography, ${neutralPrompt}`,
-        negative: `${negativePrompt}, front view, back view, facing camera, 3/4 angle`,
+        prompt: `a single ${shortBase}, viewed from the right side, side profile, right elevation, showing the right face, product shot on white background`,
+        negative: `${negativePrompt}, front view, back view, facing camera directly, face, front, rear, multiple objects, two, duplicate`,
       },
     ];
 
