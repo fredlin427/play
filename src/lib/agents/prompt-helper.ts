@@ -6,6 +6,7 @@
  */
 
 import { callLLM, callLLMStructured } from "@/lib/llm";
+import { z } from "zod";
 import {
   ExtractSpecSchema, EXTRACT_FALLBACK,
   PROMPT_HELPER_FALLBACK,
@@ -111,37 +112,96 @@ export async function ask(
 ): Promise<{ questions: AskQuestionOutput[]; context: AskContext }> {
   const zh = lang === "zh";
 
-  // 1. Get next unanswered question from template
-  const askedKeys = [...context.askedFields, ...context.skippedFields];
-  const next = getNextQuestion(spec, askedKeys, zh ? "zh" : "en");
-
-  // 2. All questions answered → done
-  if (!next) {
-    return { questions: [], context: { ...context, coverage: getCoverage(spec) } };
-  }
-
-  // 3. Safety cap
+  // Safety cap
   if (context.round >= TERMINATION.MAX_ROUNDS) {
     return { questions: [], context: { ...context, coverage: getCoverage(spec) } };
   }
 
-  // 4. Return single question
-  const question: AskQuestionOutput = {
-    field: next.field,
-    question: next.question,
-    options: next.options,
-    message: next.message,
-  };
+  // Build conversation history for LLM context
+  const known: string[] = [];
+  if (spec.subject.name) known.push(`name: ${spec.subject.name}`);
+  if (spec.visual.material) known.push(`material: ${spec.visual.material}`);
+  if (spec.visual.color) known.push(`color: ${spec.visual.color}`);
+  if (spec.dimensions.approximateSize) known.push(`dimensions: ${spec.dimensions.approximateSize}`);
+  if (spec.structure.mainShape) known.push(`shape: ${spec.structure.mainShape}`);
+  if (spec.visual.texture || spec.visual.finish) known.push(`surface: ${[spec.visual.texture, spec.visual.finish].filter(Boolean).join(" ")}`);
+  if (spec.visual.edgeTreatment) known.push(`edges: ${spec.visual.edgeTreatment}`);
+  if (spec.structure.details) known.push(`components: ${spec.structure.details}`);
+  if (spec.meta.style) known.push(`style: ${spec.meta.style}`);
 
-  const newContext: AskContext = {
-    round: context.round + 1,
-    askedFields: [...context.askedFields, next.field],
-    answeredFields: context.answeredFields,
-    skippedFields: context.skippedFields,
-    coverage: getCoverage(spec),
-  };
+  const askedList = context.askedFields.length > 0 ? `Already asked: ${context.askedFields.join(", ")}` : "";
+  const skippedList = context.skippedFields.length > 0 ? `Skipped: ${context.skippedFields.join(", ")} (don't re-ask)` : "";
 
-  return { questions: [question], context: newContext };
+  // LLM decides: what to ask next, or if we're done
+  const prompt = `You are helping a user describe an object for 3D-printable product photography image generation.
+
+Current knowledge:
+${known.length > 0 ? known.join("\n") : "(nothing yet)"}
+
+${askedList}
+${skippedList}
+
+Your job:
+1. If critical info is still missing, generate ONE question with 3-6 clickable options.
+2. Ask about what's MOST important to know next for THIS specific object.
+3. Adapt to the object: a banana needs ~4 questions. A cabinet needs ~10. Don't over-ask.
+4. If you have enough to write a detailed product description, return "DONE".
+5. Questions MUST be tailored to this specific object. Never ask generic questions.
+6. Include "不確定" / "Unsure" as an option.
+
+Output valid JSON ONLY:
+If asking: {"action":"ask","field":"descriptive_key","question":"...","options":["A","B","C","Unsure"],"message":"friendly hint"}
+If done: {"action":"done","message":"All info collected"}`;
+
+  try {
+    const result = await callLLMStructured(
+      zh
+        ? "你是一位設計顧問，協助用戶描述 3D 列印物件。根據物件類型自適應提問。簡單物件少問，複雜物件多問。輸出 JSON。"
+        : "You are a design consultant helping describe objects for 3D printing. Adapt questions to the object. Simple objects = fewer questions. Complex = more. Output JSON.",
+      prompt,
+      z.object({
+        action: z.enum(["ask", "done"]),
+        field: z.string().optional().default(""),
+        question: z.string().optional().default(""),
+        options: z.array(z.string()).optional().default([]),
+        message: z.string().optional().default(""),
+      }),
+      { action: "done", field: "", question: "", options: [], message: "Done" },
+      "ask",
+      { temperature: 0.4, maxTokens: 300 }
+    );
+
+    const d = result.data;
+
+    if (d.action === "done") {
+      return { questions: [], context: { ...context, coverage: getCoverage(spec) } };
+    }
+
+    const question: AskQuestionOutput = {
+      field: d.field || "custom",
+      question: d.question || (zh ? "請提供更多細節" : "Please provide more details"),
+      options: d.options?.length ? d.options : ["Other", zh ? "不確定" : "Unsure"],
+      message: d.message || (zh ? "請選擇或輸入：" : "Choose or type:"),
+    };
+
+    const newContext: AskContext = {
+      round: context.round + 1,
+      askedFields: [...context.askedFields, question.field],
+      answeredFields: context.answeredFields,
+      skippedFields: context.skippedFields,
+      coverage: getCoverage(spec),
+    };
+
+    return { questions: [question], context: newContext };
+  } catch {
+    // LLM failed — fall back to simple template
+    const next = getNextQuestion(spec, [...context.askedFields, ...context.skippedFields], zh ? "zh" : "en");
+    if (!next) return { questions: [], context: { ...context, coverage: getCoverage(spec) } };
+    return {
+      questions: [{ field: next.field, question: next.question, options: next.options, message: next.message }],
+      context: { ...context, round: context.round + 1, askedFields: [...context.askedFields, next.field], answeredFields: context.answeredFields, skippedFields: context.skippedFields, coverage: getCoverage(spec) },
+    };
+  }
 }
 
 // ═══════════════ Craft helpers ═══════════════
