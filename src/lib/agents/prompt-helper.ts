@@ -132,6 +132,9 @@ export async function ask(
   const askedList = context.askedFields.length > 0 ? `Already asked: ${context.askedFields.join(", ")}` : "";
   const skippedList = context.skippedFields.length > 0 ? `Skipped: ${context.skippedFields.join(", ")} (don't re-ask)` : "";
 
+  // Valid field keys the LLM MUST use
+  const validFields = "material, color, dimensions, shape, surface, edges, components, style, features";
+
   // LLM decides: what to ask next, or if we're done
   const langTag = zh ? "繁體中文" : "English";
   const prompt = zh
@@ -148,10 +151,11 @@ ${skippedList ? `用戶跳過：${skippedList}（不要再問）` : ""}
 2. 針對這個特定物件，問當前最重要的問題。
 3. 自適應難度：香蕉只需要約 4 題。醫療櫃需要約 10 題。不要過度追問但也不要漏掉關鍵細節。
 4. 如果資訊已足夠寫出詳細的產品描述，回傳 DONE。
-5. 問題必須針對這個特定物件。禁止通用模板問題。
+5. 問題必須針對這個特定物件。禁止通用模板問題（如「請提供更多細節」）。
 6. 選項中必須包含「不確定」。
-7. 全部使用繁體中文。
-8. 只輸出 JSON，不要其他文字。`
+7. field 必須是以下之一：${validFields}
+8. 全部使用繁體中文。
+9. 只輸出 JSON，不要其他文字。`
 
     : `You are helping a user describe an object for 3D-printable product photography image generation.
 
@@ -166,10 +170,11 @@ Your job:
 2. Ask about what's MOST important to know next for THIS specific object.
 3. Adapt to the object: a banana needs ~4 questions. A cabinet needs ~10. Don't over-ask but don't miss key details.
 4. If you have enough to write a detailed product description, return DONE.
-5. Questions MUST be tailored to this specific object. Never ask generic questions.
+5. Questions MUST be tailored to this specific object. Never ask generic questions like "please provide more details".
 6. Include "Unsure" as an option.
-7. Use English only.
-8. Output ONLY JSON, no other text.`;
+7. field MUST be one of: ${validFields}
+8. Use English only.
+9. Output ONLY JSON, no other text.`;
 
   try {
     const result = await callLLMStructured(

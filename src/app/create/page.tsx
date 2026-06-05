@@ -144,9 +144,21 @@ function CreatePageInner() {
     setQaHistory(prev=>[...prev,{q:q.question,a:opt,skipped:false}]);
     setMsgs(prev=>[...prev,{role:"user",text:opt}]);
 
-    // Map template variable key to DesignSpec path
+    // Map answer to spec fields. Try to detect multiple fields from free-text
     const specPath = getSpecPath(q.field);
-    const newSpec = setField(spec, specPath, opt);
+    let newSpec = setField(spec, specPath, opt);
+
+    // Smart parse: if answer looks like multi-field input, try to fill other fields too
+    if (opt.includes(" ") || opt.match(/\d+x\d+/i)) {
+      const parts = opt.split(/[,，\s]+/).filter((p: string) => p.length > 0);
+      for (const part of parts) {
+        if (part.match(/^\d+[xX×]\d+/)) newSpec = setField(newSpec, "dimensions.approximateSize", part);
+        else if (part.match(/^(白色|灰色|黑色|藍色|紅色|黃色|綠色|透明|米色|奶油|銀色|white|grey|black|blue|red|yellow|green|transparent|beige|cream|silver)$/i)) newSpec = setField(newSpec, "visual.color", part);
+        else if (part.match(/^(PLA|PETG|ABS|樹脂|resin|TPU|金屬|metal|木頭|wood|鋼|steel|鋁|aluminum|塑膠|plastic|玻璃|glass|矽膠|silicone|層壓板|laminate)$/i)) newSpec = setField(newSpec, "visual.material", part);
+        else if (part.match(/^\d{2,4}$/)) newSpec = setField(newSpec, "dimensions.approximateSize", part + "mm");
+      }
+    }
+
     setSpec(newSpec);
     updateProgress(newSpec);
     const newAnswered = [...askContext.answeredFields, q.field];
@@ -349,7 +361,10 @@ function CreatePageInner() {
                     spec.visual.edgeTreatment && `${cl==="zh"?"邊緣":"edge"}:${spec.visual.edgeTreatment}`,
                     spec.structure.details && `${cl==="zh"?"細節":"detail"}:${spec.structure.details.slice(0,40)}`,
                   ].filter(Boolean).map((t,i)=><span key={i} className="inline-block bg-white rounded px-1.5 py-0.5 mr-1 mb-1 border">{t}</span>)}
-                  {!spec.visual.material && !spec.dimensions.approximateSize && <span>{cl==="zh"?"尚未收集任何資訊":"No info collected yet"}</span>}
+                  {!spec.visual.material && !spec.visual.color && !spec.dimensions.approximateSize && !spec.structure.mainShape && <span>{cl==="zh"?"尚未收集任何資訊":"No info collected yet"}</span>}
+                  {(spec.visual.material||spec.visual.color||spec.dimensions.approximateSize) && spec.structure.mainShape && spec.visual.texture && (
+                    <span className="text-green-600 ml-1">{cl==="zh"?"✓ 資訊充足":"✓ Good detail"}</span>
+                  )}
                 </div>
               )}
 
