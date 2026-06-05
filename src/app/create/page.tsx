@@ -18,6 +18,7 @@ import type { AskContext } from "@/lib/agents/prompt-helper";
 import type { CoverageReport } from "@/lib/agents/coverage";
 import { TERMINATION } from "@/lib/agents/field-tiers";
 import { getSpecPath } from "@/lib/agents/prompt-template";
+import { getCoverage } from "@/lib/agents/coverage";
 
 const CRITICAL_FIELDS = ["subject.name","meta.assetType","meta.generationGoal","visual.material","meta.style","visual.color","dimensions.approximateSize","useCase.primaryUse"];
 const ALL_FIELDS = [
@@ -98,8 +99,8 @@ function CreatePageInner() {
   const questionRef = useRef<HTMLDivElement>(null);
 
   const updateProgress = (s: DesignSpec) => {
-    const filled = CRITICAL_FIELDS.filter(f=>{const v=getField(s,f);return v&&v!==""&&v!=="false"&&v!=="0"&&v!=="indoor";}).length;
-    setProgress(Math.round((filled/CRITICAL_FIELDS.length)*100));
+    const cov = getCoverage(s);
+    setProgress(Math.round(cov.overall * 100));
   };
 
   // ══════════════ Extract ══════════════
@@ -176,6 +177,8 @@ function CreatePageInner() {
 
     setSpec(newSpec);
     updateProgress(newSpec);
+    const freshCov = getCoverage(newSpec);
+    setCoverage(freshCov);
     const newAnswered = [...askContext.answeredFields, q.field];
     const newAsked = [...askContext.askedFields, q.field];
 
@@ -183,10 +186,10 @@ function CreatePageInner() {
     setQuestions(remaining);
 
     try {
-      const newCtx: AskContext = {...askContext, answeredFields:newAnswered, askedFields:newAsked};
-      const cov = newCtx.coverage;
-      // Stop only when coverage is sufficient OR max rounds hit
-      const coveredEnough = cov?.shouldTerminate;
+      // Recompute coverage with updated spec (fixes stale-coverage bug)
+      const freshCoverage = getCoverage(newSpec);
+      const newCtx: AskContext = {...askContext, answeredFields:newAnswered, askedFields:newAsked, coverage: freshCoverage};
+      const coveredEnough = freshCoverage.shouldTerminate;
       const maxedOut = newCtx.round >= TERMINATION.MAX_ROUNDS;
 
       if (maxedOut || (remaining.length === 0 && coveredEnough)) {
@@ -238,7 +241,7 @@ function CreatePageInner() {
           setAskContext(aData.context || newCtx);
           setCoverage(aData.context?.coverage || null);
           if (qs.length>0) setMsgs(prev=>[...prev,{role:"ai",text:qs[0].message||(cl==="zh"?"請選擇：":"Choose:")}]);
-        }).catch(err=>{setError(`Skip: ${err.message||String(err)}`);})
+        }).catch(err=>{setError(`Skip: ${err.message||String(err)}`); setLoading(false);})
         .finally(()=>setLoading(false));
     } else if (remaining.length === 0 && coveredEnough) {
       setShowSpec(true);

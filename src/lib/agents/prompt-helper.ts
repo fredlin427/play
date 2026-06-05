@@ -125,15 +125,15 @@ export async function ask(
   if (spec.dimensions.approximateSize) known.push(`dimensions: ${spec.dimensions.approximateSize}`);
   if (spec.structure.mainShape) known.push(`shape: ${spec.structure.mainShape}`);
   if (spec.visual.texture || spec.visual.finish) known.push(`surface: ${[spec.visual.texture, spec.visual.finish].filter(Boolean).join(" ")}`);
-  if (spec.visual.edgeTreatment) known.push(`edges: ${spec.visual.edgeTreatment}`);
+  if (spec.visual.edgeTreatment) known.push(`edge: ${spec.visual.edgeTreatment}`);
   if (spec.structure.details) known.push(`components: ${spec.structure.details}`);
   if (spec.meta.style) known.push(`style: ${spec.meta.style}`);
 
   const askedList = context.askedFields.length > 0 ? `Already asked: ${context.askedFields.join(", ")}` : "";
   const skippedList = context.skippedFields.length > 0 ? `Skipped: ${context.skippedFields.join(", ")} (don't re-ask)` : "";
 
-  // Valid field keys the LLM MUST use
-  const validFields = "material, color, dimensions, shape, surface, edges, components, style, features";
+  // Valid field keys the LLM MUST use — must match template keys in prompt-template.ts
+  const validFields = "material, color, dimensions, shape, surface, edge, components, style, details";
 
   // LLM decides: what to ask next, or if we're done
   const langTag = zh ? "繁體中文" : "English";
@@ -178,9 +178,7 @@ Your job:
 
   try {
     const result = await callLLMStructured(
-      zh
-        ? "你是設計顧問，協助用戶描述 3D 列印物件。根據物件類型自適應提問難度。簡單物件少問，複雜物件多問。只輸出 JSON。全部使用繁體中文。"
-        : "You are a design consultant helping describe objects for 3D printing. Adapt question depth to object complexity. Simple objects = fewer questions. Complex = more. Output JSON only. Use English only.",
+      getPrompt("ask", lang),
       prompt,
       z.object({
         action: z.enum(["ask", "done"]),
@@ -195,7 +193,7 @@ Your job:
     );
 
     const d = result.data;
-    const VALID_FIELDS = ["material", "color", "dimensions", "shape", "surface", "edges", "components", "style", "features"];
+    const VALID_FIELDS = ["material", "color", "dimensions", "shape", "surface", "edge", "components", "style", "details"];
 
     if (d.action === "done" || !d.field || !VALID_FIELDS.includes(d.field)) {
       // LLM returned invalid field or done — use template fallback
