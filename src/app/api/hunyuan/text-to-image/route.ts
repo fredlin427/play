@@ -22,9 +22,9 @@ export async function POST(request: NextRequest) {
       data: { status: "image_generating", currentStep: 2 },
     });
 
-    // Build a SHORT base description (not the long LLM-polished prompt)
-    // Z-Image responds better to short, direct prompts for view control
-    const shortBase = prompt
+    // Build a compact base from the LLM-polished prompt — take first ~120 chars
+    // Short enough for view control, long enough to preserve the LLM's descriptive quality
+    const cleaned = prompt
       .replace(/\bfront[-\s]?facing\b/gi, "")
       .replace(/\bfront\s+view\b/gi, "")
       .replace(/\bthree[-\s]?quarter\b/gi, "")
@@ -35,36 +35,40 @@ export async function POST(request: NextRequest) {
       .replace(/studio lighting,?\s*/gi, "")
       .replace(/product (photography|photo),?\s*/gi, "")
       .replace(/\bisolated\b,?\s*/gi, "")
+      .replace(/\b(white background|pure white)\b,?\s*/gi, "")
       .replace(/,\s*,/g, ",")
       .replace(/,\s*,\s*/g, ", ")
       .replace(/^\s*,\s*/, "")
       .replace(/\s{2,}/g, " ")
       .trim()
-      // Truncate to ~100 chars — short prompts give better view control
-      .split(",").slice(0, 4).join(", ")
-      // Strip leading article so "a single ..." doesn't become "a single A ..."
+      // Strip leading article
       .replace(/^(a|an|A|An)\s+/, "");
+
+    // Take first ~120 chars ending at word boundary for natural polish
+    const shortBase = cleaned.length > 120
+      ? cleaned.slice(0, 120).replace(/\s+\S*$/, "")
+      : cleaned;
 
     const VIEW_DIRECTIONS = [
       {
         label: "front",
-        prompt: `a single ${shortBase}, viewed from the front, facing the camera directly, front elevation, product shot on white background`,
-        negative: `${negativePrompt}, side view, back view, rear, profile, rotated, turned, angled, multiple objects, two, duplicate`,
+        prompt: `Front view of a single ${shortBase}, facing forward, clean product shot on pure white background`,
+        negative: `${negativePrompt}, side view, back view, rear, profile, rotated, turned, angled, multiple objects, two, duplicate, clone`,
       },
       {
         label: "back",
-        prompt: `a single ${shortBase}, viewed from the back, rear elevation, turned 180 degrees, showing the back side, product shot on white background`,
-        negative: `${negativePrompt}, front view, front facing, face, front side, handles, doors, drawers, multiple objects, two, duplicate`,
+        prompt: `Back view of a single ${shortBase}, showing the rear side, turned around, clean product shot on pure white background`,
+        negative: `${negativePrompt}, front view, front facing, front side, face visible, handles showing, drawers showing, multiple objects, two, duplicate, clone`,
       },
       {
         label: "left",
-        prompt: `a single ${shortBase}, viewed from the left side, side profile, left elevation, showing the left face, product shot on white background`,
-        negative: `${negativePrompt}, front view, back view, facing camera directly, face, front, rear, multiple objects, two, duplicate`,
+        prompt: `Left side profile of a single ${shortBase}, showing the left face, side elevation, clean product shot on pure white background`,
+        negative: `${negativePrompt}, front view, back view, facing camera directly, face visible, front side, rear side, multiple objects, two, duplicate, clone`,
       },
       {
         label: "right",
-        prompt: `a single ${shortBase}, viewed from the right side, side profile, right elevation, showing the right face, product shot on white background`,
-        negative: `${negativePrompt}, front view, back view, facing camera directly, face, front, rear, multiple objects, two, duplicate`,
+        prompt: `Right side profile of a single ${shortBase}, showing the right face, side elevation, clean product shot on pure white background`,
+        negative: `${negativePrompt}, front view, back view, facing camera directly, face visible, front side, rear side, multiple objects, two, duplicate, clone`,
       },
     ];
 
