@@ -165,9 +165,10 @@ function CreatePageInner() {
       if (maxedOut || (remaining.length === 0 && coveredEnough)) {
         setQuestions([]);
         setAskContext(newCtx);
+        setShowSpec(true); // Auto-expand spec for review
         const msg = maxedOut
-          ? (cl==="zh" ? `已達最大輪數，生成提示詞。` : `Max rounds reached. Generating prompt.`)
-          : (cl==="zh" ? `資訊收集完成！可以生成提示詞了。` : `Got all the details! Ready to generate.`);
+          ? (cl==="zh" ? `已達最大輪數。請檢查下方資訊後生成提示詞。` : `Max rounds reached. Review and generate.`)
+          : (cl==="zh" ? `✅ 資訊收集完成！請檢查並編輯下方規格，確認無誤後生成提示詞。` : `✅ Done! Review the spec below, then generate.`);
         setMsgs(prev=>[...prev,{role:"ai",text:msg}]);
       } else if (remaining.length === 0) {
         // Fetch next batch
@@ -213,7 +214,8 @@ function CreatePageInner() {
         }).catch(err=>{setError(`Skip: ${err.message||String(err)}`);})
         .finally(()=>setLoading(false));
     } else if (remaining.length === 0 && coveredEnough) {
-      setMsgs(prev=>[...prev,{role:"ai",text:cl==="zh"?"資訊收集完成！可以生成提示詞了。":"Got all the details! Ready to generate."}]);
+      setShowSpec(true);
+      setMsgs(prev=>[...prev,{role:"ai",text:cl==="zh"?"✅ 請檢查並編輯下方規格後生成。":"✅ Review spec below, then generate."}]);
     }
   };
 
@@ -426,11 +428,17 @@ function CreatePageInner() {
 
           {/* ═══ RIGHT: Spec + Result ═══ */}
           <div className="lg:col-span-2 space-y-4">
-            {/* Spec panel */}
+            {/* Spec panel — auto-expands for review after Q&A */}
             {specReady && !result && (
-              <Card><CardContent className="p-4 space-y-3">
+              <Card className={questions.length===0 && spec.subject.name ? "ring-2 ring-blue-400 shadow-lg" : ""}>
+                <CardContent className="p-4 space-y-3">
                 <button onClick={()=>setShowSpec(!showSpec)} className="w-full flex items-center justify-between text-sm font-medium">
-                  <span className="flex items-center gap-2"><Lightbulb className="w-4 h-4 text-blue-600"/>{t("Structured Spec","結構化規格")}</span>
+                  <span className="flex items-center gap-2">
+                    <Lightbulb className="w-4 h-4 text-blue-600"/>
+                    {questions.length===0 && spec.subject.name
+                      ? (cl==="zh"?"✏️ 請檢查並編輯規格":"✏️ Review & edit spec")
+                      : t("Structured Spec","結構化規格")}
+                  </span>
                   {showSpec?<ChevronUp className="w-4 h-4"/>:<ChevronDown className="w-4 h-4"/>}
                 </button>
                 {showSpec && (

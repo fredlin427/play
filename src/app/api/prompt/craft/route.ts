@@ -17,51 +17,47 @@ export async function POST(request: NextRequest) {
     // 1. Build base prompt from template
     const sd = buildSDPrompt(designSpec);
 
-    // 2. LLM polishes it into a natural, flowing English prompt
-    const polishPrompt = `You are a prompt engineer for product photography image generation.
+    // 2. LLM composes ONE flowing sentence
+    const composePrompt = `Write ONE flowing English sentence describing this object for product photography.
 
-You have structured data about an object. Compose it into a SINGLE flowing comma-separated English prompt.
+Merge ALL the data below into a single natural description. Do NOT repeat words. Do NOT output a checklist.
 
-Rules:
-- Start with describing the MAIN subject clearly (what is this a photo of?)
-- Then list its visual attributes naturally: materials, colors, shapes, dimensions
-- Then add surface details, components, and finishing touches
-- Keep it under 300 characters
-- Use natural English, not a checklist
-- Output ONLY the prompt text, nothing else
+Data:
+- It is a ${designSpec.visual.color || ""} ${designSpec.visual.material || ""} ${designSpec.subject.name || "object"}
+- Shape: ${designSpec.structure.mainShape || ""}
+- Size: ${designSpec.dimensions.approximateSize || ""}
+- Surface: ${[designSpec.visual.texture, designSpec.visual.finish].filter(Boolean).join(", ") || ""}
+- Edges: ${designSpec.visual.edgeTreatment || ""}
+- Details: ${designSpec.structure.details || ""}
 
-Structured data:
-- Name: ${designSpec.subject.name || "object"}
-- Material: ${designSpec.visual.material || "unknown"}
-- Color: ${designSpec.visual.color || "unknown"}
-- Shape: ${designSpec.structure.mainShape || "unknown"}
-- Dimensions: ${designSpec.dimensions.approximateSize || "unknown"}
-- Surface: ${[designSpec.visual.texture, designSpec.visual.finish].filter(Boolean).join(" ") || "unknown"}
-- Edge: ${designSpec.visual.edgeTreatment || "unknown"}
-- Components: ${designSpec.structure.details || "none"}
-- Features: ${[designSpec.structure.hasHoles ? "has holes" : "", designSpec.structure.hasGrooves ? "has grooves" : ""].filter(Boolean).join(", ") || "none"}
+Example BAD output: "a yellow resin banana, irregular shape, 400x300x200, smooth matte, other edges"
+Example GOOD output: "a yellow resin banana with a gently curved irregular silhouette, 400x300x200mm, smooth matte surface and softly rounded edges"
 
-Template-generated prompt (improve this):
-${sd.positive}
-
-Compose the final prompt:`;
+Output ONLY the description text. Under 250 chars.`;
 
     let finalPositive = sd.positive;
     let finalNegative = sd.negative;
     try {
       const polished = await callLLM(
-        "You compose product photography prompts. Output ONLY the prompt text, no commentary.",
-        polishPrompt,
-        { temperature: 0.4, maxTokens: 300 }
+        "You write product descriptions. Output ONLY the description text, no prefix, no commentary.",
+        composePrompt,
+        { temperature: 0.5, maxTokens: 250 }
       );
       const text = (polished.content || "").trim();
-      // Only use polished version if it's reasonable
-      if (text.length > 50 && text.length < 600) {
+      if (text.length > 30 && text.length < 500) {
         finalPositive = text;
       }
-    } catch {
-      // Keep template version if LLM fails
-    }
+    } catch { /* keep template version */ }
+
+    // Remove any accidental duplicate prefix words from LLM output
+    finalPositive = finalPositive
+      .replace(/single object,?\s*/gi, "")
+      .replace(/white background,?\s*/gi, "")
+      .replace(/studio lighting,?\s*/gi, "")
+      .replace(/product (photo|photography),?\s*/gi, "")
+      .replace(/3d[- ]ready,?\s*/gi, "")
+      .replace(/isolated,?\s*/gi, "")
+      .trim();
 
     // Prepend fixed prefix
     finalPositive = "single object, white background, studio lighting, product photo, 3D-ready, " + finalPositive;
