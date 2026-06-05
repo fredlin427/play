@@ -40,7 +40,6 @@ yarn-error.log*
 # uploads / generated outputs
 /uploads
 /uploads/*
-/photo
 /_debug_prompt.txt
 
 # Python
