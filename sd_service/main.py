@@ -49,8 +49,8 @@ class GenerateRequest(BaseModel):
     width: int = Field(default=512, ge=256, le=1024)
     height: int = Field(default=512, ge=256, le=1024)
     num_images: int = Field(default=1, ge=1, le=4)
-    num_inference_steps: int = Field(default=9, ge=4, le=30)
-    guidance_scale: float = Field(default=7.0, ge=1.0, le=20.0)
+    num_inference_steps: int = Field(default=8, ge=4, le=30)
+    guidance_scale: float = Field(default=1.0, ge=0.0, le=5.0)
 
 class GeneratedImage(BaseModel):
     url: str
