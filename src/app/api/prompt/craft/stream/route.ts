@@ -2,15 +2,23 @@
  * Streaming craft endpoint — LLM polishes the prompt token-by-token.
  * Frontend receives a Server-Sent Events stream so the user sees
  * the prompt being written in real-time instead of a spinner.
+ *
+ * Saves a PromptVersion to DB before sending the DONE event so
+ * the frontend has a valid promptVersionId for image generation.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { buildSDPrompt } from "@/lib/agents/prompt-template";
 import { callLLMStream } from "@/lib/llm";
+import { prisma } from "@/lib/prisma";
 import type { DesignSpec } from "@/lib/schemas";
+
+function sanitize(s: string): string {
+  return s.replace(/[\n\r]/g, " "); // prevent SSE newline injection
+}
 
 export async function POST(request: NextRequest) {
   try {
-    const { spec } = (await request.json()) || {};
+    const { spec, projectId } = (await request.json()) || {};
     if (!spec) return NextResponse.json({ error: "spec required" }, { status: 400 });
 
     const designSpec = spec as DesignSpec;
@@ -52,6 +60,8 @@ Rules: ONE flowing sentence-chain — spatial positioning — each component wit
     const stream = new ReadableStream({
       async start(controller) {
         let fullText = "";
+        let finalPositive = sd.positive;
+        let finalNegative = sd.negative;
         try {
           for await (const token of callLLMStream(
             "You are a product-design copywriter. Write detailed single-paragraph visual descriptions. Output ONLY the description.",
@@ -59,21 +69,58 @@ Rules: ONE flowing sentence-chain — spatial positioning — each component wit
             { temperature: 0.5, maxTokens: 500 }
           )) {
             fullText += token;
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token, full: fullText })}\n\n`));
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token, full: sanitize(fullText) })}\n\n`));
           }
-          // Send final result with template fallback info
-          const finalText = fullText.length > 30 ? fullText.trim()
+
+          const cleaned = fullText.length > 30 ? fullText.trim()
             .replace(/^single object,?\s*/i, "").replace(/^white background,?\s*/i, "")
             .replace(/^studio lighting,?\s*/i, "").replace(/^product (photo|photography),?\s*/i, "")
             .replace(/^3d[- ]ready,?\s*/i, "").replace(/^isolated,?\s*/i, "")
             .replace(/^positive prompt:?\s*/i, "").replace(/^description:?\s*/i, "")
             .trim()
             : sd.positive;
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, positive: finalText, negative: sd.negative })}\n\n`));
+          finalPositive = cleaned;
+
+          // Save PromptVersion to DB so image generation has a valid ID (Bug #1 fix)
+          let promptVersionId = "";
+          if (projectId) {
+            try {
+              const ver = ((await prisma.promptVersion.findFirst({
+                where: { projectId },
+                orderBy: { version: "desc" },
+              }))?.version || 0) + 1;
+              const pv = await prisma.promptVersion.create({
+                data: {
+                  projectId, version: ver,
+                  userInput: JSON.stringify(designSpec.subject),
+                  craftedPrompt: finalPositive,
+                  negativePrompt: finalNegative,
+                  styleNotes: "",
+                  clarityScore: 0.8, isApproved: false,
+                },
+              });
+              promptVersionId = pv.id;
+            } catch (dbErr) {
+              console.warn("[Craft Stream] DB save failed:", String(dbErr).slice(0, 100));
+            }
+          }
+
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+            done: true,
+            id: promptVersionId,
+            positive: sanitize(finalPositive),
+            negative: sanitize(finalNegative),
+          })}\n\n`));
           controller.close();
         } catch (e) {
-          // Send template as fallback
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, positive: sd.positive, negative: sd.negative, error: String(e).slice(0, 100) })}\n\n`));
+          // Send template as fallback with error info
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+            done: true,
+            positive: sanitize(sd.positive),
+            negative: sanitize(sd.negative),
+            id: "",
+            error: String(e).slice(0, 100),
+          })}\n\n`));
           controller.close();
         }
       },

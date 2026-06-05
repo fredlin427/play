@@ -68,7 +68,9 @@ function loadSession() {
 function saveSession(data: Record<string, unknown>) {
   try {
     localStorage.setItem(QA_STORAGE_KEY, JSON.stringify(data));
-  } catch {}
+  } catch (e) {
+    console.warn("[Session] Save failed:", String(e).slice(0, 80));
+  }
 }
 
 function CreatePageInner() {
@@ -127,8 +129,8 @@ function CreatePageInner() {
 
   // Auto-save session for recovery on refresh (M2: QA persistence)
   useEffect(() => {
-    saveSession({ pid, convLang, msgs, spec, specReady });
-  }, [pid, convLang, msgs, spec, specReady]);
+    saveSession({ pid, convLang, msgs, spec, specReady, result });
+  }, [pid, convLang, msgs, spec, specReady, result]);
 
   const updateProgress = (s: DesignSpec) => {
     const cov = getCoverage(s);
@@ -284,13 +286,13 @@ function CreatePageInner() {
   // ══════════════ Craft ══════════════
 
   const handleCraft = async () => {
-    if (!pid) return;
+    if (!pid) { setError("No project ID — try refreshing"); return; }
     setLoading(true); setError(null);
     // Show streaming preview immediately
     setResult({ id: "", craftedPrompt: "", negativePrompt: "" });
 
     try {
-      const res = await fetch("/api/prompt/craft/stream", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ spec }) });
+      const res = await fetch("/api/prompt/craft/stream", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ spec, projectId: pid }) });
       if (!res.ok) throw new Error(`Stream ${res.status}`);
 
       const reader = res.body?.getReader();
@@ -310,11 +312,13 @@ function CreatePageInner() {
           try {
             const data = JSON.parse(line.slice(6));
             if (data.done) {
-              setResult(prev => prev ? { ...prev, craftedPrompt: data.positive, negativePrompt: data.negative || "" } : { id: "", craftedPrompt: data.positive, negativePrompt: data.negative || "" });
+              setResult({ id: data.id || "", craftedPrompt: data.positive, negativePrompt: data.negative || "" });
             } else if (data.token) {
               setResult(prev => prev ? { ...prev, craftedPrompt: data.full } : { id: "", craftedPrompt: data.full, negativePrompt: "" });
             }
-          } catch {}
+          } catch (e) {
+            console.warn("[Craft] SSE parse error:", String(e).slice(0, 40));
+          }
         }
       }
     } catch (err: any) { setError(`Craft: ${err.message||String(err)}`); setErrorRetry(()=>handleCraft); }
@@ -334,10 +338,11 @@ function CreatePageInner() {
   };
 
   const handleGenImages = async (multiView = false) => {
-    if (!pid||!result) return;
+    if (!pid||!result||!result.id) return;
     setGenLoading(true); setError(null);
     try {
-      await fetch("/api/hunyuan/text-to-image", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:pid,promptVersionId:result.id,prompt:result.craftedPrompt,negativePrompt:result.negativePrompt,numImages:1,multiView})});
+      const res = await fetch("/api/hunyuan/text-to-image", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:pid,promptVersionId:result.id,prompt:result.craftedPrompt,negativePrompt:result.negativePrompt,numImages:1,multiView})});
+      if (!res.ok) throw new Error(`T2I ${res.status}: ${(await res.json()).error || "Unknown"}`);
       // Stay on page — user can iterate or view images on project page
       setMsgs(prev=>[...prev,{role:"ai",text:cl==="zh"
         ? `✅ 圖片已生成！可繼續修改 prompt，或前往專案頁面查看。`

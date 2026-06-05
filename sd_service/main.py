@@ -12,7 +12,6 @@ import os
 import time
 import asyncio
 import hashlib
-import subprocess
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -112,12 +111,17 @@ async def generate(req: GenerateRequest):
                 stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=300)
             except asyncio.TimeoutError:
                 proc.kill()
-                await proc.wait()
+                try:
+                    await asyncio.wait_for(proc.wait(), timeout=10)
+                except asyncio.TimeoutError:
+                    pass  # Process already dead or stuck — continue
                 raise HTTPException(status_code=504, detail="Timeout (5 min)")
             elapsed = time.perf_counter() - t0
-            returncode = proc.returncode or 0
+            returncode = proc.returncode
             print(f"[ZImage] Done in {elapsed:.1f}s (exit {returncode})")
 
+            if returncode is None:
+                raise HTTPException(status_code=500, detail="Process did not exit")
             if returncode != 0:
                 err_text = stderr.decode() if stderr else "Unknown error"
                 raise HTTPException(status_code=500, detail=f"CLI failed: {err_text[-300:]}")
@@ -130,8 +134,6 @@ async def generate(req: GenerateRequest):
         print(f"[ZImage] Generated {len(results)} images")
         return GenerateResponse(images=results, status="completed")
 
-    except subprocess.TimeoutExpired:
-        raise HTTPException(status_code=504, detail="Timeout (5 min)")
     except HTTPException:
         raise
     except Exception as e:
