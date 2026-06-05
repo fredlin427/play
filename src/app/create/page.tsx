@@ -359,55 +359,76 @@ function CreatePageInner() {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b sticky top-0 z-10">
+    <div className="min-h-screen bg-gradient-to-br from-amber-50 via-white to-rose-50">
+      {/* Header — refined with subtle shadow */}
+      <header className="bg-white/80 backdrop-blur-sm border-b border-amber-100 sticky top-0 z-10 shadow-sm">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={()=>router.push("/")}>← {t("Back","返回")}</Button>
-          <h1 className="text-lg font-semibold">{t("Design Consultation","設計諮詢")}</h1>
+          <Button variant="ghost" size="sm" onClick={()=>router.push("/")} className="text-gray-500 hover:text-amber-700">← {t("Back","返回")}</Button>
+          <h1 className="text-lg font-semibold bg-gradient-to-r from-amber-600 to-rose-500 bg-clip-text text-transparent">
+            {t("AI Design Studio","AI 設計工作室")}
+          </h1>
           <div className="flex-1"/>
-          <Button variant="ghost" size="sm" onClick={()=>setLang(toggleLang==="zh"?"en":"zh")}>{toggleLang==="zh"?"EN":"中文"}</Button>
+          <div className="flex items-center gap-2 text-xs text-gray-400">
+            <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"/>
+            {t("AI Ready","AI 就緒")}
+          </div>
+          <Button variant="ghost" size="sm" onClick={()=>setLang(toggleLang==="zh"?"en":"zh")} className="text-xs text-gray-400 hover:text-gray-700">
+            {toggleLang==="zh"?"EN":"中文"}
+          </Button>
         </div>
       </header>
 
-      <div className="max-w-5xl mx-auto px-4 py-4 space-y-4">
-        {/* Error banner */}
+      <div className="max-w-5xl mx-auto px-4 py-6 space-y-5">
+        {/* Error banner — softer */}
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-red-500 shrink-0"/>
-            <span className="text-sm text-red-700 flex-1">{error}</span>
-            {errorRetry && <Button variant="outline" size="sm" onClick={()=>{setError(null);errorRetry();}}>{t("Retry","重試")}</Button>}
-            <Button variant="ghost" size="sm" onClick={()=>setError(null)}>✕</Button>
+          <div className="bg-red-50/80 backdrop-blur-sm border border-red-200 rounded-2xl p-4 flex items-center gap-3 shadow-sm">
+            <AlertCircle className="w-5 h-5 text-red-400 shrink-0"/>
+            <span className="text-sm text-red-600 flex-1">{error}</span>
+            {errorRetry && <Button variant="outline" size="sm" onClick={()=>{setError(null);errorRetry();}} className="border-red-300 text-red-600 hover:bg-red-50">{t("Retry","重試")}</Button>}
+            <Button variant="ghost" size="sm" onClick={()=>setError(null)} className="text-red-400 hover:text-red-600">✕</Button>
           </div>
         )}
 
-        {/* Category progress bars */}
+        {/* Progress — pill-style with gradient */}
         {specReady && coverage && !result && (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-sm">
-              <span className="font-semibold">{spec.subject.name||"..."}</span>
-              <span className="text-gray-500">{t("Round","輪")} {askContext.round}/5 · {Math.round(coverage.overall*100)}%</span>
+          <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 shadow-sm border border-amber-100 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-gray-800 flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-amber-500"/>
+                {spec.subject.name||"..."}
+              </span>
+              <span className="text-xs text-gray-400 bg-gray-100 rounded-full px-3 py-1">
+                {t("Round","輪")} {askContext.round}/{TERMINATION.MAX_ROUNDS} · {Math.round(coverage.overall*100)}%
+              </span>
             </div>
             {Object.entries(coverage.byCategory).map(([cat, data]) => (
-              <div key={cat} className="flex items-center gap-2 text-xs">
+              <div key={cat} className="flex items-center gap-3 text-xs">
                 <span className="w-16 text-right text-gray-500">{cl==="zh"?data.label.zh:data.label.en}</span>
-                <div className="flex-1 bg-gray-200 rounded-full h-2">
-                  <div className={`h-2 rounded-full ${data.ratio>=1?"bg-green-500":data.ratio>=0.5?"bg-yellow-500":"bg-red-400"}`} style={{width:`${data.ratio*100}%`}}/>
+                <div className="flex-1 bg-gray-100 rounded-full h-2 overflow-hidden">
+                  <div
+                    className={`h-2 rounded-full transition-all duration-500 ${
+                      data.ratio>=1 ? "bg-gradient-to-r from-green-400 to-emerald-500" :
+                      data.ratio>=0.5 ? "bg-gradient-to-r from-amber-400 to-orange-500" :
+                      "bg-gradient-to-r from-red-300 to-rose-400"
+                    }`}
+                    style={{width:`${data.ratio*100}%`}}
+                  />
                 </div>
-                <span className="w-8 text-gray-400">{data.filled}/{data.total}</span>
+                <span className="w-8 text-gray-400 tabular-nums">{data.filled}/{data.total}</span>
               </div>
             ))}
           </div>
         )}
 
-        {/* Legacy progress bar (fallback when coverage not available) */}
+        {/* Legacy progress bar */}
         {specReady && !coverage && !result && (
-          <div className="space-y-1.5">
+          <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 shadow-sm border border-amber-100 space-y-2">
             <div className="flex items-center justify-between text-sm">
-              <span className="font-semibold">{spec.subject.name||"..."}</span>
-              <span className="text-gray-500">{progress}% · {t("Round","輪")} {askContext.round}/5</span>
+              <span className="font-semibold text-gray-800">{spec.subject.name||"..."}</span>
+              <span className="text-xs text-gray-400">{progress}% · {t("Round","輪")} {askContext.round}/{TERMINATION.MAX_ROUNDS}</span>
             </div>
-            <div className="w-full bg-gray-200 rounded-full h-2.5">
-              <div className="bg-blue-600 h-2.5 rounded-full" style={{width:`${progress}%`}}/>
+            <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+              <div className="bg-gradient-to-r from-amber-400 to-rose-500 h-2 rounded-full transition-all duration-700" style={{width:`${progress}%`}}/>
             </div>
           </div>
         )}
@@ -415,91 +436,135 @@ function CreatePageInner() {
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
           {/* ═══ LEFT: Chat + Q&A ═══ */}
           <div className="lg:col-span-3 space-y-4">
-            <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-              {MODES.map(m=>(<button key={m.key} onClick={()=>setMode(m.key)} className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium ${mode===m.key?"bg-white text-blue-700 shadow-sm":"text-gray-600 hover:text-gray-900"}`}><m.icon className="w-3.5 h-3.5"/><span className="hidden sm:inline">{toggleLang==="zh"?m.zh:m.en}</span></button>))}
+            {/* Mode tabs — pill style */}
+            <div className="flex gap-1 bg-white/80 backdrop-blur-sm rounded-2xl p-1.5 shadow-sm border border-amber-100">
+              {MODES.map(m=>(
+                <button key={m.key} onClick={()=>setMode(m.key)}
+                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium transition-all duration-200 ${
+                    mode===m.key
+                      ? "bg-gradient-to-r from-amber-400 to-amber-500 text-white shadow-md"
+                      : "text-gray-500 hover:text-gray-700 hover:bg-amber-50"
+                  }`}
+                >
+                  <m.icon className="w-3.5 h-3.5"/>
+                  <span className="hidden sm:inline">{toggleLang==="zh"?m.zh:m.en}</span>
+                </button>
+              ))}
             </div>
-            {mode==="sketch"&&<><SketchPad onSave={(dataUrl)=>{setSketchDataUrl(dataUrl);setUploadedImages([{id:"sketch",fileName:"sketch.png",previewUrl:dataUrl}]);}}/><Textarea value={sketchNotes} onChange={e=>setSketchNotes(e.target.value)} placeholder={cl==="zh"?"備註（形狀、尺寸、材質...）":"Notes (shape, size, material...)"} rows={2} className="resize-none text-sm"/></>}
+
+            {mode==="sketch"&&<><SketchPad onSave={(dataUrl)=>{setSketchDataUrl(dataUrl);setUploadedImages([{id:"sketch",fileName:"sketch.png",previewUrl:dataUrl}]);}}/><Textarea value={sketchNotes} onChange={e=>setSketchNotes(e.target.value)} placeholder={cl==="zh"?"備註（形狀、尺寸、材質...）":"Notes (shape, size, material...)"} rows={2} className="resize-none text-sm rounded-xl"/></>}
             {mode==="image"&&<ReferenceImageUploader projectId={pid} onUpload={(imgs)=>{setUploadedImages(imgs);if(imgs.length>0 && !input.trim()) setInput(cl==="zh"?"請根據這些參考圖生成一個...":"Generate a 3D-printable object based on these reference images...");}}/>}
             {mode==="model"&&<ReferenceModelUploader projectId={pid} onUpload={(models)=>{setUploadedModels(models);if(models.length>0 && !input.trim()) setInput(cl==="zh"?"請根據這個3D模型生成...":"Generate a matching object based on this 3D model reference...");}}/>}
 
             {/* File status badge */}
             {mode!=="text" && (sketchDataUrl||uploadedImages.length>0||uploadedModels.length>0) && (
-              <div className="flex items-center gap-2 text-xs text-green-700 bg-green-50 rounded-lg px-3 py-2">
-                <ImagePlus className="w-3.5 h-3.5"/>
-                {mode==="sketch" && <span>{cl==="zh"?"✓ 草圖已匯出":"✓ Sketch exported"}{sketchNotes?` · ${cl==="zh"?"備註":"notes"}: ${sketchNotes.slice(0,40)}`  :""}</span>}
+              <div className="flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50/80 backdrop-blur-sm rounded-xl px-3 py-2 border border-emerald-100">
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400"/>
+                {mode==="sketch" && <span>{cl==="zh"?"✓ 草圖已匯出":"✓ Sketch exported"}{sketchNotes?` · ${sketchNotes.slice(0,40)}`  :""}</span>}
                 {mode==="image" && <span>{uploadedImages.length} {cl==="zh"?"張參考圖":"reference image(s)"}</span>}
                 {mode==="model" && <span>{uploadedModels.length} {cl==="zh"?"個模型":"model(s)"}: {uploadedModels.map((m:any)=>m.fileName).join(", ")}</span>}
               </div>
             )}
 
-            {/* Chat messages — natural flow, no scroll jail */}
+            {/* Chat messages */}
             <div className="space-y-3">
               {msgs.map((m,i)=>(
                 <div key={`${m.role}-${i}-${m.text.slice(0,10)}`} className={`flex ${m.role==="user"?"justify-end":"justify-start"}`}>
-                  <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm ${m.role==="user"?"bg-blue-600 text-white rounded-br-md":"bg-white border text-gray-800 rounded-bl-md shadow-sm"}`}>{m.text}</div>
+                  <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                    m.role==="user"
+                      ? "bg-gradient-to-br from-amber-500 to-amber-600 text-white rounded-br-md shadow-md"
+                      : "bg-white/90 backdrop-blur-sm border border-amber-100 text-gray-700 rounded-bl-md shadow-sm"
+                  }`}>
+                    {m.text}
+                  </div>
                 </div>
               ))}
 
-              {/* ⭐ Accumulated spec summary */}
+              {/* Accumulated spec summary — warm tags */}
               {specReady && !result && (
-                <div className="text-xs text-gray-500 bg-gray-50 rounded-lg p-2 space-y-0.5">
-                  <span className="font-medium text-gray-700">{cl==="zh"?"已收集：":"Collected: "}</span>
-                  {[
-                    spec.visual.material && `${cl==="zh"?"材質":"material"}:${spec.visual.material}`,
-                    spec.visual.color && `${cl==="zh"?"顏色":"color"}:${spec.visual.color}`,
-                    spec.dimensions.approximateSize && `${cl==="zh"?"尺寸":"size"}:${spec.dimensions.approximateSize}`,
-                    spec.structure.mainShape && `${cl==="zh"?"形狀":"shape"}:${spec.structure.mainShape}`,
-                    (spec.visual.texture||spec.visual.finish) && `${cl==="zh"?"表面":"surface"}:${[spec.visual.texture,spec.visual.finish].filter(Boolean).join(" ")}`,
-                    spec.visual.edgeTreatment && `${cl==="zh"?"邊緣":"edge"}:${spec.visual.edgeTreatment}`,
-                    spec.structure.details && `${cl==="zh"?"細節":"detail"}:${spec.structure.details.slice(0,40)}`,
-                  ].filter(Boolean).map((t,i)=><span key={i} className="inline-block bg-white rounded px-1.5 py-0.5 mr-1 mb-1 border">{t}</span>)}
-                  {!spec.visual.material && !spec.visual.color && !spec.dimensions.approximateSize && !spec.structure.mainShape && <span>{cl==="zh"?"尚未收集任何資訊":"No info collected yet"}</span>}
-                  {(spec.visual.material||spec.visual.color||spec.dimensions.approximateSize) && spec.structure.mainShape && spec.visual.texture && (
-                    <span className="text-green-600 ml-1">{cl==="zh"?"✓ 資訊充足":"✓ Good detail"}</span>
-                  )}
+                <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-3 border border-amber-100 space-y-1.5">
+                  <span className="text-xs font-semibold text-amber-700">{cl==="zh"?"📋 已收集：":"📋 Collected: "}</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      spec.visual.material && {label:cl==="zh"?"材質":"material",val:spec.visual.material,color:"bg-amber-50 text-amber-700 border-amber-200"},
+                      spec.visual.color && {label:cl==="zh"?"顏色":"color",val:spec.visual.color,color:"bg-rose-50 text-rose-700 border-rose-200"},
+                      spec.dimensions.approximateSize && {label:cl==="zh"?"尺寸":"size",val:spec.dimensions.approximateSize,color:"bg-blue-50 text-blue-700 border-blue-200"},
+                      spec.structure.mainShape && {label:cl==="zh"?"形狀":"shape",val:spec.structure.mainShape,color:"bg-purple-50 text-purple-700 border-purple-200"},
+                      (spec.visual.texture||spec.visual.finish) && {label:cl==="zh"?"表面":"surface",val:[spec.visual.texture,spec.visual.finish].filter(Boolean).join(" "),color:"bg-emerald-50 text-emerald-700 border-emerald-200"},
+                      spec.visual.edgeTreatment && {label:cl==="zh"?"邊緣":"edge",val:spec.visual.edgeTreatment,color:"bg-teal-50 text-teal-700 border-teal-200"},
+                      spec.structure.details && {label:cl==="zh"?"細節":"detail",val:spec.structure.details.slice(0,40),color:"bg-indigo-50 text-indigo-700 border-indigo-200"},
+                    ].filter(Boolean).map((t:any,i)=>(
+                      <span key={i} className={`inline-flex items-center gap-1 text-xs rounded-full px-2.5 py-1 border ${t.color}`}>
+                        <span className="opacity-60">{t.label}</span>
+                        <span className="font-medium">{t.val}</span>
+                      </span>
+                    ))}
+                    {!spec.visual.material && !spec.visual.color && !spec.dimensions.approximateSize && !spec.structure.mainShape &&
+                      <span className="text-xs text-gray-400">{cl==="zh"?"尚未收集任何資訊":"No info collected yet"}</span>
+                    }
+                  </div>
                 </div>
               )}
 
-              {/* ⭐ Single question at a time */}
+              {/* Question card — soft glow */}
               {questions.length > 0 && !loading && !result && (
-                <div ref={questionRef} className="space-y-3 bg-blue-50/50 rounded-xl p-4 border border-blue-200">
-                  <p className="text-base font-semibold text-gray-900">{questions[0].question}</p>
-                  {/* Text input — primary for dimensions/free-text, secondary for option questions */}
+                <div ref={questionRef} className="space-y-4 bg-gradient-to-br from-amber-50/90 via-white to-rose-50/90 backdrop-blur-sm rounded-2xl p-5 border border-amber-200 shadow-lg shadow-amber-100/50">
+                  <div className="flex items-start gap-3">
+                    <div className="shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-rose-500 flex items-center justify-center shadow-sm">
+                      <Sparkles className="w-4 h-4 text-white"/>
+                    </div>
+                    <p className="text-base font-semibold text-gray-800 pt-1">{questions[0].question}</p>
+                  </div>
+
+                  {/* Text input */}
                   <div className="flex gap-2">
                     <Input value={customAnswer} onChange={e=>setCustomAnswer(e.target.value)}
                       placeholder={questions[0].options.filter(o=>!o.includes("跳過")&&!o.includes("skip")).length===0
                         ? (cl==="zh"?"請直接輸入...":"Type your answer...")
                         : (cl==="zh"?"或自行輸入...":"Or type your own...")}
-                      className="h-10 text-sm flex-1"
+                      className="h-11 text-sm flex-1 rounded-xl border-amber-200 focus:border-amber-400 focus:ring-amber-400"
                       autoFocus={questions[0].options.filter(o=>!o.includes("跳過")&&!o.includes("skip")).length===0}
                       onKeyDown={e=>{if(e.key==="Enter"&&customAnswer.trim()){e.preventDefault();handleAnswer(questions[0],customAnswer.trim());}}}/>
                     {customAnswer.trim() && (
-                      <Button size="sm" onClick={()=>handleAnswer(questions[0],customAnswer.trim())}>✓</Button>
+                      <Button size="sm" onClick={()=>handleAnswer(questions[0],customAnswer.trim())} className="rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-500 hover:to-amber-600 shadow-sm">
+                        <ArrowRight className="w-4 h-4"/>
+                      </Button>
                     )}
                   </div>
-                  {/* Options — only if there are meaningful choices beyond skip */}
+
+                  {/* Option buttons — card style */}
                   {questions[0].options.filter(o=>!o.includes("跳過")&&!o.includes("skip")).length>0 && (
                     <div className="grid grid-cols-1 gap-2">
                       {questions[0].options.filter(o=>!o.includes("跳過")&&!o.includes("skip")).map((opt,idx)=>(
                         <button key={idx} onClick={()=>handleAnswer(questions[0],opt)}
-                          className="w-full text-left px-4 py-3 rounded-xl border-2 border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50 hover:shadow-md flex items-center gap-3">
-                          <span className="shrink-0 w-7 h-7 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center">{idx+1}</span>
-                          <span className="text-sm font-medium">{opt}</span>
+                          className="group w-full text-left px-4 py-3 rounded-2xl border-2 border-amber-100 bg-white hover:border-amber-400 hover:bg-gradient-to-r hover:from-amber-50 hover:to-rose-50 hover:shadow-lg transition-all duration-200 flex items-center gap-3">
+                          <span className="shrink-0 w-8 h-8 rounded-xl bg-gradient-to-br from-amber-400 to-amber-500 text-white text-xs font-bold flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm">
+                            {idx+1}
+                          </span>
+                          <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">{opt}</span>
+                          <ArrowRight className="w-4 h-4 text-amber-300 ml-auto opacity-0 group-hover:opacity-100 transition-opacity"/>
                         </button>
                       ))}
                     </div>
                   )}
+
+                  {/* Skip button */}
                   <button onClick={()=>handleSkip(questions[0])}
-                    className="w-full text-center text-xs py-2 rounded-lg border border-dashed border-gray-300 text-gray-400 hover:border-amber-300 hover:text-amber-600 hover:bg-amber-50">
+                    className="w-full text-center text-xs py-2.5 rounded-xl border-2 border-dashed border-amber-200 text-amber-400 hover:border-amber-400 hover:text-amber-600 hover:bg-amber-50/50 transition-colors">
                     {cl==="zh"?"⏭️ 不確定，跳過":"⏭️ Unsure, skip"}
                   </button>
                 </div>
               )}
 
-              {loading && <div className="flex items-center gap-2 text-sm text-blue-600"><Loader2 className="w-4 h-4 animate-spin"/>{t("Thinking...","思考中...")}</div>}
+              {loading && (
+                <div className="flex items-center gap-3 text-sm text-amber-600 bg-white/80 backdrop-blur-sm rounded-2xl px-4 py-3 border border-amber-100">
+                  <Loader2 className="w-4 h-4 animate-spin"/>
+                  <span>{t("Thinking...","AI 思考中...")}</span>
+                </div>
+              )}
             </div>
 
-            {/* Input / Craft button */}
+            {/* Bottom input bar */}
             <div className="space-y-2">
               {!specReady ? (
                 <>
@@ -509,46 +574,61 @@ function CreatePageInner() {
                         ? (cl==="zh" ? "描述參考圖中的物品，或直接描述想要生成的..." : "Describe the object in the reference, or what to generate...")
                         : mode==="model"
                         ? (cl==="zh" ? "描述3D模型，或想要生成的變體..." : "Describe the 3D model, or desired variant...")
-                        : (cl==="zh" ? "描述您想創建的物品..." : "Describe what you want to create...")}
-                      rows={3} className="resize-none text-sm"/>
+                        : (cl==="zh" ? "描述您想創建的物品，例如：白色醫療櫃，木材，直立矩形盒狀，200mm..." : "Describe what you want to create, e.g. a white medical cabinet, wood, vertical box shape...")}
+                      rows={3} className="resize-none text-sm rounded-2xl border-amber-200 focus:border-amber-400"/>
                   )}
-                  <Button onClick={handleExtract} disabled={loading||(!input.trim()&&!(sketchDataUrl||uploadedImages.length>0||uploadedModels.length>0))} className="w-full" size="lg">
-                    {loading?<Loader2 className="w-4 h-4 animate-spin mr-2"/>:<MessageSquare className="w-4 h-4 mr-2"/>}
-                    {t("Start","開始")}
+                  <Button onClick={handleExtract} disabled={loading||(!input.trim()&&!(sketchDataUrl||uploadedImages.length>0||uploadedModels.length>0))}
+                    className="w-full h-12 rounded-2xl bg-gradient-to-r from-amber-500 to-rose-500 hover:from-amber-600 hover:to-rose-600 shadow-lg shadow-amber-200 text-white font-semibold text-base transition-all duration-300 hover:shadow-xl hover:shadow-amber-300 hover:-translate-y-0.5">
+                    {loading
+                      ? <><Loader2 className="w-5 h-5 animate-spin mr-2"/> {t("Analyzing...","分析中...")}</>
+                      : <><MessageSquare className="w-5 h-5 mr-2"/> {t("Start Creating","✨ 開始創作")}</>
+                    }
                   </Button>
                 </>
               ) : result ? (
                 <div className="flex gap-2">
                   <div className="flex-1 flex gap-1">
                     <Textarea value={feedback} onChange={e=>setFeedback(e.target.value)}
-                      placeholder={cl==="zh"?"修改意見...":"Feedback..."} rows={1} className="resize-none text-sm"
+                      placeholder={cl==="zh"?"修改意見...":"Feedback..."} rows={1}
+                      className="resize-none text-sm rounded-xl border-amber-200"
                       onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();handleIterate();}}}/>
-                    <Button size="sm" variant="outline" onClick={handleIterate} disabled={!feedback.trim()||loading}>
+                    <Button size="sm" variant="outline" onClick={handleIterate} disabled={!feedback.trim()||loading}
+                      className="rounded-xl border-amber-300 text-amber-700 hover:bg-amber-50">
                       {loading?<Loader2 className="w-3.5 h-3.5 animate-spin"/>:<RefreshCw className="w-3.5 h-3.5"/>}
                     </Button>
                   </div>
-                  <Button onClick={()=>handleGenImages(false)} disabled={genLoading||!result.craftedPrompt} variant="outline" className="shrink-0">
+                  <Button onClick={()=>handleGenImages(false)} disabled={genLoading||!result.craftedPrompt} variant="outline"
+                    className="rounded-xl border-gray-200 text-gray-600 hover:border-amber-300 hover:text-amber-700 shrink-0">
                     {genLoading?<Loader2 className="w-4 h-4 animate-spin mr-1"/>:<ArrowRight className="w-4 h-4 mr-1"/>}1 View
                   </Button>
-                  <Button onClick={()=>handleGenImages(true)} disabled={genLoading||!result.craftedPrompt} className="shrink-0">
+                  <Button onClick={()=>handleGenImages(true)} disabled={genLoading||!result.craftedPrompt}
+                    className="rounded-xl bg-gradient-to-r from-amber-500 to-rose-500 hover:from-amber-600 hover:to-rose-600 text-white shadow-md shrink-0">
                     {genLoading?<Loader2 className="w-4 h-4 animate-spin mr-1"/>:<Box className="w-4 h-4 mr-1"/>}4 Views
                   </Button>
                 </div>
               ) : (
-                questions.length === 0 && <Button onClick={handleCraft} disabled={loading} className="w-full" size="lg">{loading?<Loader2 className="w-4 h-4 animate-spin mr-2"/>:<Wand2 className="w-4 h-4 mr-2"/>}{t("Generate Prompt","✨ 生成提示詞")}</Button>
+                questions.length === 0 && (
+                  <Button onClick={handleCraft} disabled={loading}
+                    className="w-full h-12 rounded-2xl bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700 shadow-lg shadow-violet-200 text-white font-semibold text-base transition-all duration-300 hover:shadow-xl hover:shadow-violet-300 hover:-translate-y-0.5">
+                    {loading
+                      ? <><Loader2 className="w-5 h-5 animate-spin mr-2"/> {t("Generating...","生成中...")}</>
+                      : <><Wand2 className="w-5 h-5 mr-2"/> {t("Generate Prompt","✨ 生成提示詞")}</>
+                    }
+                  </Button>
+                )
               )}
             </div>
           </div>
 
           {/* ═══ RIGHT: Spec + Result ═══ */}
           <div className="lg:col-span-2 space-y-4">
-            {/* Spec panel — auto-expands for review after Q&A */}
+            {/* Spec panel */}
             {specReady && !result && (
-              <Card className={questions.length===0 && spec.subject.name ? "ring-2 ring-blue-400 shadow-lg" : ""}>
+              <Card className={`bg-white/80 backdrop-blur-sm border-amber-100 transition-all duration-500 ${questions.length===0 && spec.subject.name ? "ring-2 ring-amber-400 shadow-xl shadow-amber-200/50" : "shadow-sm"}`}>
                 <CardContent className="p-4 space-y-3">
-                <button onClick={()=>setShowSpec(!showSpec)} className="w-full flex items-center justify-between text-sm font-medium">
+                <button onClick={()=>setShowSpec(!showSpec)} className="w-full flex items-center justify-between text-sm font-medium text-gray-700 hover:text-amber-700 transition-colors">
                   <span className="flex items-center gap-2">
-                    <Lightbulb className="w-4 h-4 text-blue-600"/>
+                    <Lightbulb className="w-4 h-4 text-amber-500"/>
                     {questions.length===0 && spec.subject.name
                       ? (cl==="zh"?"✏️ 請檢查並編輯規格":"✏️ Review & edit spec")
                       : t("Structured Spec","結構化規格")}
@@ -562,8 +642,15 @@ function CreatePageInner() {
                       const filled = val && val!=="" && val!=="false" && val!=="0" && val!=="indoor";
                       return (
                         <div key={f.path} className="space-y-0.5">
-                          <label className={`text-[10px] font-medium ${filled?"text-green-600":"text-amber-600"}`}>{cl==="zh"?f.zh:f.en}</label>
-                          <Input value={val} onChange={e=>{const ns=setField(spec,f.path,e.target.value);setSpec(ns);updateProgress(ns);}} placeholder="..." className={`h-7 text-xs ${filled?"border-green-200":"border-amber-200 bg-amber-50"}`}/>
+                          <label className={`text-[10px] font-medium ${filled?"text-emerald-600":"text-amber-600"}`}>
+                            {cl==="zh"?f.zh:f.en}{filled?" ✓":""}
+                          </label>
+                          <Input value={val} onChange={e=>{const ns=setField(spec,f.path,e.target.value);setSpec(ns);updateProgress(ns);}}
+                            placeholder="..."
+                            className={`h-8 text-xs rounded-xl transition-colors ${filled
+                              ? "border-emerald-200 bg-emerald-50/50 focus:border-emerald-400"
+                              : "border-amber-200 bg-amber-50/50 focus:border-amber-400"}`}
+                          />
                         </div>
                       );
                     })}
@@ -572,26 +659,46 @@ function CreatePageInner() {
               </CardContent></Card>
             )}
 
-            {/* Result: SD Prompt */}
+            {/* Result: SD Prompt — elegant cards */}
             {result && (
-              <Card><CardContent className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
-                <div className="flex items-center justify-between sticky top-0 bg-white pb-2 border-b">
-                  <CardTitle className="text-sm"><Sparkles className="w-4 h-4 text-blue-600 inline mr-1"/>SD Prompt</CardTitle>
-                  <Button variant="ghost" size="sm" onClick={()=>{navigator.clipboard.writeText(result.craftedPrompt);setCopied(true);setTimeout(()=>setCopied(false),2000);}}>
-                    {copied?<Check className="w-3.5 h-3.5 text-green-600"/>:<Copy className="w-3.5 h-3.5"/>}
-                  </Button>
-                </div>
-                <div className="space-y-3">
-                  <div>
-                    <h4 className="text-xs font-semibold text-green-700 mb-1">Positive Prompt (發給 SD) {loading && <Loader2 className="w-3 h-3 animate-spin inline ml-1"/>}</h4>
-                    <p className="text-sm bg-green-50 rounded-lg p-3 leading-relaxed break-all font-mono text-xs">{result.craftedPrompt || (loading ? "Generating..." : "")}</p>
+              <Card className="bg-white/80 backdrop-blur-sm border-amber-100 shadow-lg overflow-hidden">
+                <CardContent className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
+                  <div className="flex items-center justify-between sticky top-0 bg-white/90 backdrop-blur-sm pb-3 border-b border-amber-100">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-amber-500"/>
+                      <span className="bg-gradient-to-r from-amber-600 to-rose-500 bg-clip-text text-transparent font-bold">SD Prompt</span>
+                    </CardTitle>
+                    <Button variant="ghost" size="sm" onClick={()=>{navigator.clipboard.writeText(result.craftedPrompt);setCopied(true);setTimeout(()=>setCopied(false),2000);}}
+                      className="rounded-xl text-xs text-gray-400 hover:text-amber-600">
+                      {copied?<><Check className="w-3.5 h-3.5 text-emerald-500"/> {t("Copied","已複製")}</>:<><Copy className="w-3.5 h-3.5"/> {t("Copy","複製")}</>}
+                    </Button>
                   </div>
-                  <div>
-                    <h4 className="text-xs font-semibold text-red-700 mb-1">Negative Prompt</h4>
-                    <p className="text-sm bg-red-50 rounded-lg p-3 leading-relaxed break-all font-mono text-xs">{result.negativePrompt}</p>
+                  <div className="space-y-3">
+                    <div>
+                      <h4 className="text-xs font-semibold text-emerald-600 mb-2 flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"/>
+                        Positive Prompt
+                        {loading && <Loader2 className="w-3 h-3 animate-spin ml-1"/>}
+                      </h4>
+                      <p className="text-sm bg-gradient-to-br from-emerald-50 to-green-50 rounded-2xl p-4 leading-relaxed text-gray-700 border border-emerald-100 shadow-inner">
+                        {result.craftedPrompt || (loading
+                          ? <span className="text-emerald-400 italic">{t("Generating your prompt...","正在為您生成提示詞...")}</span>
+                          : ""
+                        )}
+                      </p>
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-semibold text-rose-600 mb-2 flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-rose-400"/>
+                        Negative Prompt
+                      </h4>
+                      <p className="text-sm bg-gradient-to-br from-rose-50 to-red-50 rounded-2xl p-4 leading-relaxed text-gray-600 border border-rose-100 shadow-inner">
+                        {result.negativePrompt || (loading ? "..." : "")}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              </CardContent></Card>
+                </CardContent>
+              </Card>
             )}
           </div>
         </div>
