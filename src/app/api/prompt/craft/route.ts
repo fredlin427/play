@@ -17,50 +17,64 @@ export async function POST(request: NextRequest) {
     // 1. Build base prompt from template
     const sd = buildSDPrompt(designSpec);
 
-    // 2. LLM composes ONE flowing sentence
-    const composePrompt = `Write ONE flowing English sentence describing this object for product photography.
+    // 2. LLM composes a detailed natural paragraph
+    const data = [
+      designSpec.visual.color,
+      designSpec.visual.material,
+      designSpec.subject.name,
+    ].filter(Boolean).join(" ");
+    const shape = designSpec.structure.mainShape || "";
+    const dims = designSpec.dimensions.approximateSize || "";
+    const surf = [designSpec.visual.texture, designSpec.visual.finish].filter(Boolean).join(" ") || "";
+    const edge = designSpec.visual.edgeTreatment || "";
+    const style = designSpec.meta.style || "";
+    const comp = designSpec.structure.details || "";
 
-Merge ALL the data below into a single natural description. Do NOT repeat words. Do NOT output a checklist.
+    const composePrompt = `Write a DETAILED product photography description as one flowing paragraph.
 
-Data:
-- It is a ${designSpec.visual.color || ""} ${designSpec.visual.material || ""} ${designSpec.subject.name || "object"}
-- Shape: ${designSpec.structure.mainShape || ""}
-- Size: ${designSpec.dimensions.approximateSize || ""}
-- Surface: ${[designSpec.visual.texture, designSpec.visual.finish].filter(Boolean).join(", ") || ""}
-- Edges: ${designSpec.visual.edgeTreatment || ""}
-- Details: ${designSpec.structure.details || ""}
+Describe: a ${data}
+Overall form: ${shape}
+Size: ${dims}
+Surface: ${surf}
+Edges: ${edge}
+Design style: ${style}
+Component details: ${comp}
 
-Example BAD output: "a yellow resin banana, irregular shape, 400x300x200, smooth matte, other edges"
-Example GOOD output: "a yellow resin banana with a gently curved irregular silhouette, 400x300x200mm, smooth matte surface and softly rounded edges"
+Write like this example (note the level of detail, spatial positioning, and natural flow):
+"A modern minimalist white five-drawer storage cabinet, rectangular vertical box shape, clean flat panels, matte white finish, front-facing five stacked drawers, each drawer has a centered black recessed semicircular cut-out handle near the top edge, thin dark gaps between drawer fronts, smooth sharp-edged cabinet body with slightly beveled edges, plain white side panels, flat top surface, small black adjustable feet at the bottom corners, simple Scandinavian office furniture design, accurate proportions, symmetrical front layout, clean hard-surface geometry, product design model, isolated object"
 
-Output ONLY the description text. Under 250 chars.`;
+Rules:
+- One flowing paragraph, not a comma-separated list
+- Include spatial positioning (where things are located)
+- Describe each visible component with its position and shape
+- Use natural English sentences connected with commas
+- Be specific about colors, materials, finishes
+- Under 400 words
+- Output ONLY the description, no prefix, no commentary`;
 
     let finalPositive = sd.positive;
     let finalNegative = sd.negative;
     try {
       const polished = await callLLM(
-        "You write product descriptions. Output ONLY the description text, no prefix, no commentary.",
+        "You are a product design copywriter. Write detailed visual descriptions of products. Output ONLY the description.",
         composePrompt,
-        { temperature: 0.5, maxTokens: 250 }
+        { temperature: 0.5, maxTokens: 400 }
       );
       const text = (polished.content || "").trim();
-      if (text.length > 30 && text.length < 500) {
+      if (text.length > 50 && text.length < 800) {
         finalPositive = text;
       }
     } catch { /* keep template version */ }
 
-    // Remove any accidental duplicate prefix words from LLM output
+    // Strip any accidental prefix words
     finalPositive = finalPositive
-      .replace(/single object,?\s*/gi, "")
-      .replace(/white background,?\s*/gi, "")
-      .replace(/studio lighting,?\s*/gi, "")
-      .replace(/product (photo|photography),?\s*/gi, "")
-      .replace(/3d[- ]ready,?\s*/gi, "")
-      .replace(/isolated,?\s*/gi, "")
+      .replace(/^single object,?\s*/i, "")
+      .replace(/^white background,?\s*/i, "")
+      .replace(/^studio lighting,?\s*/i, "")
+      .replace(/^product (photo|photography),?\s*/i, "")
+      .replace(/^3d[- ]ready,?\s*/i, "")
+      .replace(/^isolated,?\s*/i, "")
       .trim();
-
-    // Prepend fixed prefix
-    finalPositive = "single object, white background, studio lighting, product photo, 3D-ready, " + finalPositive;
 
     const ver = ((await prisma.promptVersion.findFirst({ where: { projectId }, orderBy: { version: "desc" } }))?.version || 0) + 1;
     const pv = await prisma.promptVersion.create({

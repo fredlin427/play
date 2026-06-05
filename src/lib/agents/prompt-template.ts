@@ -41,13 +41,15 @@ export type PromptMode = "simple" | "complex";
 // ═══════════════════════════════════════════════════════════════════════
 
 export const SIMPLE_QUESTIONS = [
-  { key: "material",   zh: "用什麼材質？",           en: "What material?",        optsZH: ["PLA", "PETG", "ABS", "樹脂", "TPU", "金屬", "木材", "其他"], optsEN: ["PLA","PETG","ABS","Resin","TPU","Metal","Wood","Other"] },
-  { key: "color",      zh: "什麼顏色？",             en: "What color?",           optsZH: ["白色","灰色","黑色","藍色","紅色","黃色","綠色","透明","雙色","其他"], optsEN: ["White","Grey","Black","Blue","Red","Yellow","Green","Transparent","Two-tone","Other"] },
-  { key: "dimensions", zh: "精確尺寸？請直接輸入 長x寬x高（mm），例如：400x300x200mm", en: "Exact dimensions? Type LxWxH in mm, e.g. 400x300x200mm", optsZH: ["不確定尺寸，跳過"], optsEN: ["Unsure, skip"] },
-  { key: "shape",      zh: "什麼形狀？幾何特徵？",    en: "Shape and geometry?",   optsZH: ["矩形","圓柱","球形","彎曲","盒子狀","托盤狀","不規則","其他"], optsEN: ["Rectangular","Cylindrical","Spherical","Curved","Box-like","Tray","Irregular","Other"] },
-  { key: "surface",    zh: "表面質感？",             en: "Surface finish?",       optsZH: ["光滑啞光","亮光","粗糙","拉絲金屬","磨砂","皮革紋","其他"], optsEN: ["Smooth matte","Glossy","Rough","Brushed metal","Frosted","Leather","Other"] },
-  { key: "edge",       zh: "邊緣處理？",             en: "Edge treatment?",       optsZH: ["直角","圓角","倒角","斜邊","其他"], optsEN: ["Sharp","Rounded","Chamfered","Beveled","Other"] },
-  { key: "features",   zh: "有孔洞/溝槽/特殊標記嗎？", en: "Holes, grooves, markings?", optsZH: ["通風孔","凹槽","刻度/標記","無","其他"], optsEN: ["Vents","Grooves","Markings","None","Other"] },
+  { key: "material",   zh: "用什麼材質？不同部位可用不同材質", en: "What material(s)? Different parts can be different.", optsZH: ["PLA", "PETG", "ABS", "樹脂", "TPU", "金屬", "粉末塗層鋼", "層壓板", "木材", "其他"], optsEN: ["PLA","PETG","ABS","Resin","TPU","Metal","Powder-coated steel","Laminate","Wood","Other"] },
+  { key: "color",      zh: "什麼顏色？如有不同部位請分別說明（如：白色機身+黑色把手）", en: "What color(s)? Per part if different (e.g. white body + black handles).", optsZH: ["白色","灰色","黑色","米色/奶油","藍色","銀色","雙色搭配","其他"], optsEN: ["White","Grey","Black","Beige/Cream","Blue","Silver","Two-tone combo","Other"] },
+  { key: "dimensions", zh: "精確尺寸？請輸入 長x寬x高（mm），例如：400x300x200mm", en: "Exact dimensions? Type LxWxH in mm, e.g. 400x300x200mm", optsZH: ["不確定尺寸，跳過"], optsEN: ["Unsure, skip"] },
+  { key: "shape",      zh: "什麼形狀？描述整體輪廓和結構（如：直立矩形盒狀、五層堆疊抽屜）", en: "Shape? Describe overall form (e.g. vertical rectangular box, 5 stacked drawers).", optsZH: ["直立矩形盒狀","橫向矩形","圓柱形","L形","不規則有機形","托盤/淺盤","其他"], optsEN: ["Vertical box","Horizontal rectangle","Cylindrical","L-shaped","Irregular organic","Tray/shallow","Other"] },
+  { key: "components", zh: "有哪些部件？請逐一描述每個部件的位置和細節（如：五個堆疊抽屜、每個抽屜中央有黑色半圓凹槽把手）", en: "Components? Describe each part with its position and detail (e.g. five stacked drawers, each with a centered black recessed semicircular pull near the top edge).", optsZH: ["無特殊部件","其他"], optsEN: ["No special components","Other"] },
+  { key: "surface",    zh: "表面質感？描述光澤度和觸感", en: "Surface finish? Describe gloss and texture.", optsZH: ["光滑啞光（matte）","亮光（glossy）","粗糙","拉絲金屬紋","磨砂","完全平滑無紋理","其他"], optsEN: ["Smooth matte","Glossy","Rough","Brushed metal","Frosted","Perfectly smooth/no texture","Other"] },
+  { key: "edge",       zh: "邊緣如何處理？", en: "Edge treatment?", optsZH: ["銳利直角","輕微倒角（beveled）","大圓角","斜邊","其他"], optsEN: ["Sharp/square","Slightly beveled","Large rounded","Chamfered","Other"] },
+  { key: "style",      zh: "設計風格？（如：現代簡約、北歐辦公、工業風、醫療級）", en: "Design style? (e.g. modern minimalist, Scandinavian office, industrial, medical-grade)", optsZH: ["現代簡約","北歐/Scandinavian","工業風","醫療級","古典","無特定風格","其他"], optsEN: ["Modern minimalist","Scandinavian","Industrial","Medical-grade","Classic","No specific style","Other"] },
+  { key: "details",    zh: "還有什麼視覺細節？（如：抽屜間隙、可調節腳座、隱藏螺絲）", en: "Any visual details? (e.g. thin gaps between drawers, adjustable feet, hidden screws)", optsZH: ["無特殊細節","其他"], optsEN: ["No special details","Other"] },
 ];
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -190,22 +192,6 @@ export function getNextQuestion(
   return null; // All done
 }
 
-function isSimpleFieldFilled(spec: DesignSpec, key: string): boolean {
-  switch (key) {
-    case "material": return !!spec.visual.material?.trim();
-    case "color": return !!spec.visual.color?.trim();
-    case "dimensions": return !!spec.dimensions.approximateSize?.trim();
-    case "shape": return !!spec.structure.mainShape?.trim();
-    case "surface": return !!(spec.visual.texture?.trim() || spec.visual.finish?.trim());
-    case "edge": return !!spec.visual.edgeTreatment?.trim();
-    case "features": return !!(
-      spec.structure.hasHoles || spec.structure.hasGrooves ||
-      spec.structure.details?.trim() || spec.visual.edgeTreatment?.trim()
-    );
-    default: return false;
-  }
-}
-
 /** Map answer key to DesignSpec dotted path */
 export function getSpecPath(key: string): string {
   const map: Record<string, string> = {
@@ -213,9 +199,26 @@ export function getSpecPath(key: string): string {
     color: "visual.color",
     dimensions: "dimensions.approximateSize",
     shape: "structure.mainShape",
+    components: "structure.details",
     surface: "visual.texture",
     edge: "visual.edgeTreatment",
-    features: "structure.details",
+    style: "meta.style",
+    details: "structure.details",
   };
   return map[key] || "subject.name";
+}
+
+function isSimpleFieldFilled(spec: DesignSpec, key: string): boolean {
+  switch (key) {
+    case "material": return !!spec.visual.material?.trim();
+    case "color": return !!spec.visual.color?.trim();
+    case "dimensions": return !!spec.dimensions.approximateSize?.trim();
+    case "shape": return !!spec.structure.mainShape?.trim();
+    case "components": return !!spec.structure.details?.trim();
+    case "surface": return !!(spec.visual.texture?.trim() || spec.visual.finish?.trim());
+    case "edge": return !!spec.visual.edgeTreatment?.trim();
+    case "style": return !!spec.meta.style?.trim();
+    case "details": return !!spec.structure.details?.trim();
+    default: return false;
+  }
 }
