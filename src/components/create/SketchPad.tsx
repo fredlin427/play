@@ -40,7 +40,7 @@ export function SketchPad({ onSave, className }: SketchPadProps) {
   const startPointRef = useRef<{ x: number; y: number } | null>(null);
   const snapshotRef = useRef<ImageData | null>(null);
 
-  // Initialize canvas size
+  // Initialize canvas size (only on mount and window resize — NOT on color/lineWidth change)
   useEffect(() => {
     const canvas = canvasRef.current;
     const container = containerRef.current;
@@ -52,6 +52,15 @@ export function SketchPad({ onSave, className }: SketchPadProps) {
       const w = rect.width;
       const h = rect.height || 400;
 
+      // Save current canvas content before resize
+      const tempCanvas = document.createElement("canvas");
+      tempCanvas.width = canvas.width;
+      tempCanvas.height = canvas.height;
+      const tempCtx = tempCanvas.getContext("2d");
+      if (tempCtx) {
+        tempCtx.drawImage(canvas, 0, 0);
+      }
+
       canvas.style.width = w + "px";
       canvas.style.height = h + "px";
       canvas.width = w * dpr;
@@ -62,6 +71,10 @@ export function SketchPad({ onSave, className }: SketchPadProps) {
         ctx.scale(dpr, dpr);
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(0, 0, w, h);
+        // Restore previous canvas content
+        if (tempCtx) {
+          ctx.drawImage(tempCanvas, 0, 0, w, h);
+        }
         ctx.strokeStyle = color;
         ctx.lineWidth = lineWidth;
         ctx.lineCap = "round";
@@ -72,7 +85,7 @@ export function SketchPad({ onSave, className }: SketchPadProps) {
     resize();
     window.addEventListener("resize", resize);
     return () => window.removeEventListener("resize", resize);
-  }, [color, lineWidth]);
+  }, []); // Only run on mount — color/lineWidth are set per-stroke, not needed here
 
   // Get canvas-relative coordinates
   const getPos = useCallback((e: React.MouseEvent | React.TouchEvent) => {

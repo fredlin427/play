@@ -41,9 +41,9 @@ export type PromptMode = "simple" | "complex";
 // ═══════════════════════════════════════════════════════════════════════
 
 export const SIMPLE_QUESTIONS = [
-  { key: "material",   zh: "用什麼材質？不同部位可用不同材質", en: "What material(s)? Different parts can be different.", optsZH: ["PLA", "PETG", "ABS", "樹脂", "TPU", "金屬", "粉末塗層鋼", "層壓板", "木材", "其他"], optsEN: ["PLA","PETG","ABS","Resin","TPU","Metal","Powder-coated steel","Laminate","Wood","Other"] },
+  { key: "material",   zh: "用什麼材質？", en: "What material?", optsZH: ["PLA 新手友善·剛性·室內用", "PETG 耐用·微彈·食品級·醫療OK", "ABS 高強·耐100°C·需通風", "TPU 橡膠彈性·減震", "Resin 樹脂·高精度·光滑", "Nylon 尼龍·工業級·耐磨", "不確定"], optsEN: ["PLA beginner·rigid·indoor", "PETG durable·flex·food-safe", "ABS strong·100°C·ventilation", "TPU rubber-flexible", "Resin high-detail·smooth", "Nylon industrial·wear-resistant", "Unsure"] },
   { key: "color",      zh: "什麼顏色？如有不同部位請分別說明（如：白色機身+黑色把手）", en: "What color(s)? Per part if different (e.g. white body + black handles).", optsZH: ["白色","灰色","黑色","米色/奶油","藍色","銀色","雙色搭配","其他"], optsEN: ["White","Grey","Black","Beige/Cream","Blue","Silver","Two-tone combo","Other"] },
-  { key: "dimensions", zh: "精確尺寸？請輸入 長x寬x高（mm），例如：400x300x200mm", en: "Exact dimensions? Type LxWxH in mm, e.g. 400x300x200mm", optsZH: ["不確定尺寸，跳過"], optsEN: ["Unsure, skip"] },
+  { key: "dimensions", zh: "精確尺寸？請輸入 長x寬x高（mm），例如 400x300x200mm", en: "Exact dimensions? Enter LxWxH in mm, e.g. 400x300x200mm", optsZH: ["100x100x100mm", "200x150x100mm", "400x300x200mm", "自訂 LxWxH", "不確定"], optsEN: ["100x100x100mm", "200x150x100mm", "400x300x200mm", "Custom LxWxH", "Unsure"] },
   { key: "shape",      zh: "什麼形狀？描述整體輪廓和結構（如：直立矩形盒狀、五層堆疊抽屜）", en: "Shape? Describe overall form (e.g. vertical rectangular box, 5 stacked drawers).", optsZH: ["直立矩形盒狀","橫向矩形","圓柱形","L形","不規則有機形","托盤/淺盤","其他"], optsEN: ["Vertical box","Horizontal rectangle","Cylindrical","L-shaped","Irregular organic","Tray/shallow","Other"] },
   { key: "components", zh: "有哪些部件？請逐一描述每個部件的位置和細節（如：五個堆疊抽屜、每個抽屜中央有黑色半圓凹槽把手）", en: "Components? Describe each part with its position and detail (e.g. five stacked drawers, each with a centered black recessed semicircular pull near the top edge).", optsZH: ["無特殊部件","其他"], optsEN: ["No special components","Other"] },
   { key: "surface",    zh: "表面質感？描述光澤度和觸感", en: "Surface finish? Describe gloss and texture.", optsZH: ["光滑啞光（matte）","亮光（glossy）","粗糙","拉絲金屬紋","磨砂","完全平滑無紋理","其他"], optsEN: ["Smooth matte","Glossy","Rough","Brushed metal","Frosted","Perfectly smooth/no texture","Other"] },
@@ -67,23 +67,37 @@ export const COMPONENT_QUESTIONS = [
 // Prompt assembly
 // ═══════════════════════════════════════════════════════════════════════
 
-const POSITIVE_PREFIX = "single object, white background, studio lighting, product photo, 3D-ready";
 const NEGATIVE_BASE = "text, watermark, logo, multiple objects, background clutter, blur, distortion, harsh shadows";
 
-/** Build SD prompt from simple spec */
+/**
+ * Build a Z-Image-friendly (flow-matching, CFG=1.0) prompt from simple spec.
+ *
+ * IMPORTANT: Flow-matching models prefer natural flowing language over
+ * comma-separated tag lists. The output is a sentence-chain, not SD-style tags.
+ */
 function buildSimplePrompt(s: SimpleSpec): { positive: string; negative: string } {
-  const subject = [`a ${[s.color, s.material, s.name].filter(Boolean).join(" ")}`];
-  if (s.shape) subject.push(s.shape + " shape");
-  if (s.dimensions) subject.push(s.dimensions);
+  const parts: string[] = [];
 
-  const details: string[] = [];
-  if (s.surface) details.push(s.surface + " surface");
-  if (s.edgeTreatment) details.push(s.edgeTreatment + " edges");
-  if (s.features) details.push(s.features);
+  // Front-load key visual info (color + material + name)
+  const subjectWords = [s.color, s.material, s.name].filter(Boolean);
+  if (subjectWords.length > 0) {
+    parts.push(`a ${subjectWords.join(" ")}`);
+  }
+  if (s.shape) parts.push(`${s.shape} shape`);
+  if (s.dimensions) parts.push(s.dimensions);
 
-  const positive = [POSITIVE_PREFIX, ...subject, ...details].filter(Boolean).join(", ");
+  // Details as flowing phrases (not bare tags)
+  if (s.surface) parts.push(`${s.surface} surface`);
+  if (s.edgeTreatment) parts.push(`${s.edgeTreatment} edges`);
+  if (s.features) parts.push(s.features);
 
-  // Smart negatives
+  // Z-Image-beneficial closing tokens
+  parts.push("single object on pure white background");
+  parts.push("clean product photography style");
+
+  const positive = parts.filter(Boolean).join(", ");
+
+  // Smart negatives (same logic as before)
   const negExtra: string[] = [];
   const matLow = s.material.toLowerCase();
   const colLow = s.color.toLowerCase();
@@ -96,25 +110,36 @@ function buildSimplePrompt(s: SimpleSpec): { positive: string; negative: string 
   return { positive, negative: [NEGATIVE_BASE, ...negExtra].join(", ") };
 }
 
-/** Build SD prompt from complex (multi-component) spec */
+/**
+ * Build a Z-Image-friendly prompt from complex (multi-component) spec.
+ */
 function buildComplexPrompt(overall: SimpleSpec, components: ComponentSpec[]): { positive: string; negative: string } {
-  const overallDesc = [
-    `a ${[overall.color, overall.material, overall.name].filter(Boolean).join(" ")}`,
-    overall.dimensions,
-    overall.shape,
-  ].filter(Boolean).join(", ");
+  const parts: string[] = [];
 
-  const compDescs = components.map((c) => {
-    const parts = [
-      c.quantity ? `${c.quantity} ` : "",
+  // Overall object description first (front-loaded)
+  const overallWords = [overall.color, overall.material, overall.name].filter(Boolean);
+  if (overallWords.length > 0) {
+    parts.push(`a ${overallWords.join(" ")}`);
+  }
+  if (overall.shape) parts.push(`${overall.shape} shape`);
+  if (overall.dimensions) parts.push(overall.dimensions);
+
+  // Component descriptions as flowing phrases
+  for (const c of components) {
+    const compParts = [
+      c.quantity || "",
       c.color, c.material, c.name,
       c.dimensions,
       c.notes,
     ].filter(Boolean).join(" ");
-    return parts;
-  });
+    if (compParts) parts.push(compParts);
+  }
 
-  const positive = [POSITIVE_PREFIX, overallDesc, ...compDescs].filter(Boolean).join(", ");
+  // Z-Image-beneficial closing tokens
+  parts.push("single object on pure white background");
+  parts.push("clean product photography style");
+
+  const positive = parts.filter(Boolean).join(", ");
 
   const negExtra: string[] = [];
   for (const c of components) {
@@ -204,6 +229,9 @@ export function getSpecPath(key: string): string {
     edge: "visual.edgeTreatment",
     style: "meta.style",
     details: "structure.details",
+    use: "useCase.primaryUse",
+    view: "composition.viewAngle",
+    environment: "useCase.environment",
   };
   return map[key] || "subject.name";
 }

@@ -17,6 +17,8 @@ import type { Lang } from "@/lib/i18n";
 import { getCoverage, type CoverageReport } from "@/lib/agents/coverage";
 import { TERMINATION } from "@/lib/agents/field-tiers";
 import { getNextQuestion } from "@/lib/agents/prompt-template";
+import { getMaxRounds } from "@/lib/agents/question-banks";
+import { getMemoryExamples, recordQuestions } from "@/lib/agents/question-memory";
 
 export type { DesignSpec, ExtractSpecOutput, AskQuestionOutput, AskContext };
 
@@ -108,12 +110,14 @@ export async function ask(
 ): Promise<{ questions: AskQuestionOutput[]; context: AskContext }> {
   const zh = lang === "zh";
 
-  // Safety cap
-  if (context.round >= TERMINATION.MAX_ROUNDS) {
+  // Safety cap — dynamic based on asset type complexity
+  const maxRounds = getMaxRounds(spec.meta?.assetType || "unknown");
+  if (context.round >= maxRounds) {
+    console.log(`[Ask] Max rounds reached (${maxRounds} for ${spec.meta?.assetType})`);
     return { questions: [], context: { ...context, coverage: getCoverage(spec) } };
   }
 
-  // Build conversation history for LLM context
+  // Build conversation history
   const known: string[] = [];
   if (spec.subject.name) known.push(`name: ${spec.subject.name}`);
   if (spec.visual.material) known.push(`material: ${spec.visual.material}`);
@@ -124,15 +128,32 @@ export async function ask(
   if (spec.visual.edgeTreatment) known.push(`edge: ${spec.visual.edgeTreatment}`);
   if (spec.structure.details) known.push(`components: ${spec.structure.details}`);
   if (spec.meta.style) known.push(`style: ${spec.meta.style}`);
+  if (spec.useCase?.primaryUse) known.push(`use: ${spec.useCase.primaryUse}`);
+  if (spec.useCase?.environment) known.push(`environment: ${spec.useCase.environment}`);
+  if (spec.composition?.viewAngle && spec.composition.viewAngle !== "front or 3/4") known.push(`view: ${spec.composition.viewAngle}`);
 
   const askedList = context.askedFields.length > 0 ? `Already asked: ${context.askedFields.join(", ")}` : "";
   const skippedList = context.skippedFields.length > 0 ? `Skipped: ${context.skippedFields.join(", ")} (don't re-ask)` : "";
+  const coverage = getCoverage(spec);
+  const unfilledList = coverage.unfilled.slice(0, 5).join(", ");
 
-  // Valid field keys the LLM MUST use — must match template keys in prompt-template.ts
-  const validFields = "material, color, dimensions, shape, surface, edge, components, style, details";
+  // Asset-type-specific probing instructions
+  const assetType = spec.meta?.assetType || "unknown";
+  const assetHints: Record<string, string> = {
+    medical: zh ? "這是醫療物件 — 必須追問：滅菌方式、病人接觸、生物相容性、清潔方法" : "This is medical — must ask: sterilization method, patient contact, biocompatibility, cleaning method",
+    robot: zh ? "這是機械物件 — 必須追問：關節類型、結構需求、活動部件、受力情況" : "This is mechanical — must ask: joint types, structural needs, moving parts, load requirements",
+    furniture: zh ? "這是家具 — 必須追問：承重需求、表面耐用度、組裝方式" : "This is furniture — must ask: load-bearing needs, surface durability, assembly method",
+    jewelry: zh ? "這是首飾 — 必須追問：金屬類型、寶石鑲嵌、扣環類型、表面處理" : "This is jewelry — must ask: metal type, gem settings, clasp type, surface finish",
+    character: zh ? "這是角色/公仔 — 必須追問：姿勢、比例、風格、上色方案" : "This is character/figurine — must ask: pose, proportions, style, coloring scheme",
+    product: zh ? "先問功能需求再問材質 — 承重？耐熱？防水？食品接觸？彈性？" : "Ask functional needs before material — load-bearing? heat? waterproof? food contact? flexible?",
+  };
+  const assetHint = assetHints[assetType] || "";
 
-  // LLM decides: what to ask next, or if we're done
-  const langTag = zh ? "繁體中文" : "English";
+  const validFields = "material, color, dimensions, shape, surface, edge, components, style, details, use, view";
+
+  // Self-improving memory: fetch past good questions for this asset type
+  const memoryExamples = getMemoryExamples(assetType, zh ? "zh" : "en", 3);
+
   const prompt = zh
     ? `你正在協助用戶描述一個用於 3D 列印產品攝影的物件。
 
@@ -141,17 +162,21 @@ ${known.length > 0 ? known.join("\n") : "（尚未收集任何資訊）"}
 
 ${askedList ? `已經問過：${askedList}` : ""}
 ${skippedList ? `用戶跳過：${skippedList}（不要再問）` : ""}
+未填欄位（按優先級）：${unfilledList}
+物件類型：${assetType}（最多 ${maxRounds} 輪）
+${assetHint}
+${memoryExamples ? `\n過去針對類似物件的好問題範例（參考風格，不要照抄）：\n${memoryExamples}` : ""}
 
 你的任務：
-1. 如果還缺少關鍵資訊，產生 1 個問題，附帶 3-6 個可點擊選項。
-2. 針對這個特定物件，問當前最重要的問題。
-3. 自適應難度：香蕉只需要約 4 題。醫療櫃需要約 10 題。不要過度追問但也不要漏掉關鍵細節。
-4. 如果資訊已足夠寫出詳細的產品描述，回傳 DONE。
-5. 問題必須針對這個特定物件。禁止通用模板問題（如「請提供更多細節」）。
+1. 產生 2-3 個問題，每個附帶 3-6 個可點擊選項。不要只問 1 個。
+2. 優先問功能需求（承重、耐熱、防水、食品接觸、彈性）再問材質/顏色/尺寸。
+3. 問題要針對這個特定物件 — 參考上面的 assetType 追問提示。
+4. 如果資訊已足夠（至少 5 個欄位已填且 REQUIRED 全部完成），回傳空陣列 []。
+5. 不要太早停 — 如果問不到 4 輪，繼續問。
 6. 選項中必須包含「不確定」。
 7. field 必須是以下之一：${validFields}
 8. 全部使用繁體中文。
-9. 只輸出 JSON，不要其他文字。`
+9. 只輸出 JSON 陣列，不要其他文字。`
 
     : `You are helping a user describe an object for 3D-printable product photography image generation.
 
@@ -160,74 +185,97 @@ ${known.length > 0 ? known.join("\n") : "(nothing yet)"}
 
 ${askedList}
 ${skippedList}
+Unfilled fields (by priority): ${unfilledList}
+Asset type: ${assetType} (max ${maxRounds} rounds)
+${assetHint}
+${memoryExamples ? `\nPast good questions for similar objects (reference style, don't copy exactly):\n${memoryExamples}` : ""}
 
 Your job:
-1. If critical info is still missing, generate ONE question with 3-6 clickable options.
-2. Ask about what's MOST important to know next for THIS specific object.
-3. Adapt to the object: a banana needs ~4 questions. A cabinet needs ~10. Don't over-ask but don't miss key details.
-4. If you have enough to write a detailed product description, return DONE.
-5. Questions MUST be tailored to this specific object. Never ask generic questions like "please provide more details".
+1. Generate 2-3 questions, each with 3-6 clickable options. Do NOT ask only 1.
+2. Prioritize FUNCTIONAL NEEDS (load-bearing, heat, water, food contact, flexibility) before material/color/size.
+3. Tailor questions to THIS specific object — follow the asset type hint above.
+4. If enough info (at least 5 fields filled AND all REQUIRED done), return empty array [].
+5. Don't stop too early — if fewer than 4 rounds asked, keep going.
 6. Include "Unsure" as an option.
 7. field MUST be one of: ${validFields}
 8. Use English only.
-9. Output ONLY JSON, no other text.`;
+9. Output ONLY a JSON array, no other text.`;
 
   try {
+    // Schema accepting batch questions
+    const questionSchema = z.object({
+      field: z.string(),
+      question: z.string(),
+      options: z.array(z.string()),
+      message: z.string().optional().default(""),
+    });
+
     const result = await callLLMStructured(
       getPrompt("ask", lang),
       prompt,
-      z.object({
-        action: z.enum(["ask", "done"]),
-        field: z.string().optional().default(""),
-        question: z.string().optional().default(""),
-        options: z.array(z.string()).optional().default([]),
-        message: z.string().optional().default(""),
-      }),
-      { action: "ask", field: "detail", question: (zh ? "請描述這個物件的材質、顏色、尺寸和形狀" : "Please describe the material, color, size and shape of this object"), options: [zh ? "其他" : "Other", zh ? "不確定" : "Unsure"], message: (zh ? "請提供更多細節" : "Please provide more details") },
+      z.array(questionSchema),
+      [{ field: "detail", question: (zh ? "請描述這個物件的材質、顏色、尺寸和形狀" : "Describe material, color, size and shape"), options: [zh ? "其他" : "Other", zh ? "不確定" : "Unsure"], message: "" }],
       "ask",
-      { temperature: 0.4, maxTokens: 300 }
+      { temperature: 0.4, maxTokens: 500 }
     );
 
-    const d = result.data;
-    const VALID_FIELDS = ["material", "color", "dimensions", "shape", "surface", "edge", "components", "style", "details"];
+    const questions = result.data;
+    const VALID_FIELDS = ["material", "color", "dimensions", "shape", "surface", "edge", "components", "style", "details", "use", "view", "environment"];
 
-    if (d.action === "done" || !d.field || !VALID_FIELDS.includes(d.field)) {
-      // LLM returned invalid field or done — use template fallback
-      if (d.action === "done") {
-        // Only trust "done" if we have at least 3 fields filled
-        const filledCount = [spec.visual.material, spec.visual.color, spec.dimensions.approximateSize, spec.structure.mainShape].filter(Boolean).length;
-        if (filledCount >= 3) {
-          return { questions: [], context: { ...context, coverage: getCoverage(spec) } };
-        }
+    // Filter valid questions
+    const validQs = questions.filter(q => q.field && VALID_FIELDS.includes(q.field) && q.question);
+
+    // Done check: trust empty array only if 5+ fields filled
+    if (validQs.length === 0) {
+      const filledCount = [
+        spec.visual.material, spec.visual.color, spec.dimensions.approximateSize,
+        spec.structure.mainShape, spec.visual.texture || spec.visual.finish,
+        spec.structure.details, spec.meta.style,
+      ].filter(Boolean).length;
+      if (filledCount >= 5) {
+        return { questions: [], context: { ...context, coverage: getCoverage(spec) } };
       }
-      // Fall through to template
-      console.warn(`[Ask] LLM returned invalid field "${d.field}", using template fallback`);
+      // Not enough — fallback to template
+      console.warn(`[Ask] LLM returned empty but only ${filledCount}/5 fields filled, using template`);
       const next = getNextQuestion(spec, [...context.askedFields, ...context.skippedFields], zh ? "zh" : "en");
-      if (!next) return { questions: [], context: { ...context, coverage: getCoverage(spec) } };
+      if (!next) return { questions: [], context: { ...context, coverage } };
       const q: AskQuestionOutput = { field: next.field, question: next.question, options: next.options, message: next.message };
-      const ctx: AskContext = { round: context.round + 1, askedFields: [...context.askedFields, next.field], answeredFields: context.answeredFields, skippedFields: context.skippedFields, coverage: getCoverage(spec) };
-      return { questions: [q], context: ctx };
+      return { questions: [q], context: { round: context.round + 1, askedFields: [...context.askedFields, next.field], answeredFields: context.answeredFields, skippedFields: context.skippedFields, coverage } };
     }
 
-    // LLM question is valid — use it
-    const question: AskQuestionOutput = {
-      field: d.field,
-      question: d.question,
-      options: d.options?.length ? d.options : ["Other", zh ? "不確定" : "Unsure"],
-      message: d.message || (zh ? "請選擇或輸入：" : "Choose or type:"),
-    };
+    // Convert to output format
+    const output: AskQuestionOutput[] = validQs.map(q => ({
+      field: q.field,
+      question: q.question,
+      options: q.options?.length ? q.options : ["Other", zh ? "不確定" : "Unsure"],
+      message: q.message || (zh ? "請選擇或輸入：" : "Choose or type:"),
+    }));
 
     const newContext: AskContext = {
       round: context.round + 1,
-      askedFields: [...context.askedFields, question.field],
+      askedFields: [...context.askedFields, ...output.map(q => q.field)],
       answeredFields: context.answeredFields,
       skippedFields: context.skippedFields,
       coverage: getCoverage(spec),
     };
 
-    return { questions: [question], context: newContext };
+    console.log(`[Ask] Returning ${output.length} questions (round ${context.round + 1}/${maxRounds})`);
+
+    // Record to self-improving memory (async, fire-and-forget)
+    try {
+      recordQuestions(output.map(q => ({
+        assetType,
+        objectName: spec.subject?.name || "object",
+        field: q.field,
+        question: q.question,
+        options: q.options,
+        wasAnswered: true,  // optimistic — updated later if skipped
+        wasCustomAnswer: false,
+      })));
+    } catch { /* memory recording is best-effort */ }
+
+    return { questions: output, context: newContext };
   } catch (e) {
-    // LLM failed — fall back to simple template
     console.warn("[Ask] LLM call failed, using template fallback:", String(e).slice(0, 100));
     const next = getNextQuestion(spec, [...context.askedFields, ...context.skippedFields], zh ? "zh" : "en");
     if (!next) return { questions: [], context: { ...context, coverage: getCoverage(spec) } };

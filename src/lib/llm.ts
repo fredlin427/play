@@ -66,6 +66,25 @@ function getClient(): OpenAI | null {
   return _client;
 }
 
+// ── Vision Model Config ────────────────────────────────────────────────
+
+interface VisionConfig {
+  enabled: boolean;
+  model: string;
+}
+
+function getVisionConfig(): VisionConfig {
+  return {
+    enabled: process.env.VISION_ENABLED === "true",
+    model: process.env.VISION_MODEL || "qwen2.5-vl:7b",
+  };
+}
+
+export function isVisionAvailable(): boolean {
+  if (getConfig().provider === "mock") return false;
+  return getVisionConfig().enabled;
+}
+
 // ── Public API ───────────────────────────────────────────────────────
 
 export interface LLMResponse {
@@ -175,6 +194,65 @@ export async function* callLLMStream(
   // Fallback: mock response as a single chunk
   const mock = mockResponse(systemPrompt, userMessage);
   yield mock.content;
+}
+
+/**
+ * Vision LLM call — sends an image along with a text prompt.
+ * Uses OpenAI-compatible vision format (works with Ollama vision models
+ * like qwen2.5-vl, llava, etc.).
+ *
+ * Returns null if vision is not available or the call fails.
+ */
+export async function callVisionLLM(
+  imageBase64: string,
+  imageMimeType: string,
+  prompt: string,
+  options?: { temperature?: number; maxTokens?: number }
+): Promise<LLMResponse | null> {
+  const vConfig = getVisionConfig();
+  if (!vConfig.enabled) {
+    console.warn("[LLM Vision] Vision not enabled (VISION_ENABLED=false)");
+    return null;
+  }
+
+  const client = getClient();
+  if (!client) {
+    console.warn("[LLM Vision] No LLM client available");
+    return null;
+  }
+
+  try {
+    const completion = await client.chat.completions.create({
+      model: vConfig.model,
+      temperature: options?.temperature ?? 0.3,
+      max_tokens: options?.maxTokens ?? 500,
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: prompt },
+            {
+              type: "image_url",
+              image_url: {
+                url: `data:${imageMimeType};base64,${imageBase64}`,
+              },
+            },
+          ],
+        },
+      ],
+    });
+
+    const msg = completion.choices[0]?.message;
+    const content = msg?.content || "";
+    return {
+      content,
+      model: completion.model || vConfig.model,
+      provider: "local",
+    };
+  } catch (error) {
+    console.error("[LLM Vision] Vision call failed:", String(error).slice(0, 200));
+    return null;
+  }
 }
 
 // ── Privacy-Aware Logging ────────────────────────────────────────────
@@ -387,10 +465,14 @@ function mockResponse(systemPrompt: string, userMessage: string): LLMResponse {
     content = mockIntake(userMessage);
   } else if (promptLower.includes("design consultant") || promptLower.includes("設計顧問")) {
     content = mockAsk(userMessage);
-  } else if (promptLower.includes("product-design copywriter") || promptLower.includes("product design copywriter")) {
-    content = mockCraftPositive(userMessage);
+  } else if (promptLower.includes("self-critique") || (promptLower.includes("flow-matching") && promptLower.includes("valid json"))) {
+    // Joint craft: chain-of-thought → JSON {positive, negative}
+    content = mockJointCraft(userMessage);
   } else if (promptLower.includes("image-generation prompt engineer") || promptLower.includes("generate concise negative")) {
     content = mockCraftNegative(userMessage);
+  } else if (promptLower.includes("product-design copywriter") || promptLower.includes("product design copywriter") || (promptLower.includes("flow-matching") && promptLower.includes("output only the description"))) {
+    // Streaming positive: Z-Image-Turbo flow-matching polish
+    content = mockCraftPositive(userMessage);
   } else if (promptLower.includes("prompt engineer") || promptLower.includes("9-section prompt")) {
     content = mockPrompt(userMessage);
   } else {
@@ -707,6 +789,27 @@ function mockCraftPositive(input: string): string {
   const matMatch = input.match(/- Material:\s*(.+)/);
   const material = matMatch?.[1] || "plastic";
   return `A sleek ${color} ${material} ${name}, clean geometric form with smooth surfaces, centered composition, product photography style, studio lighting, precise proportions, isolated on plain background, 3D-ready render quality`;
+}
+
+// ── Mock: Joint Craft (positive + negative in one JSON) ────────────
+
+function mockJointCraft(input: string): string {
+  const nameMatch = input.match(/- Object:\s*(.+)/);
+  const name = nameMatch?.[1] || "object";
+  const colorMatch = input.match(/- Color:\s*(.+)/);
+  const color = colorMatch?.[1] || "white";
+  const matMatch = input.match(/- Material:\s*(.+)/);
+  const material = matMatch?.[1] || "plastic";
+  const shapeMatch = input.match(/- Overall shape:\s*(.+)/);
+  const shape = shapeMatch?.[1] || "";
+  const compMatch = input.match(/- Component details:\s*(.+)/);
+  const comp = compMatch?.[1] || "";
+
+  const positive = `A sleek ${color} ${material} ${name}${shape ? `, ${shape} shape` : ""}, clean geometric form with smooth surfaces, single object centered on pure white background, studio soft lighting, precise proportions, accurate details${comp ? `, ${comp}` : ""}, product photography style, 3D-ready render quality`;
+
+  const negative = `text, watermark, logo, multiple objects, two, duplicate, clone, background clutter, blur, distortion, harsh shadows, bad lighting, wrong material, wrong color, deformed geometry, missing parts, extra parts, wrong proportions`;
+
+  return JSON.stringify({ positive, negative });
 }
 
 // ── Mock: Craft Negative ────────────────────────────────────────────

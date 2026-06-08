@@ -1,15 +1,14 @@
 /**
- * Asset-Type-Specific Question Banks
+ * Asset-Type-Specific Question Banks — V2 Deepened
  *
- * For each assetType, we define a prioritized list of questions
- * to ask during the multi-round Q&A phase. These serve as strong
- * guidance for the LLM, which can customize them further.
+ * Each asset type has a prioritized list of questions for multi-round Q&A.
+ * V2 adds deep, domain-specific questions that go beyond basic shape/color:
+ *   medical → sterilization, biocompatibility, patient contact, clinical environment
+ *   robot/mechanical → joint types, tolerances, structural reinforcement, assembly
+ *   jewelry → gem type, setting style, clasp/chain, metal finish
+ *   furniture → load-bearing, assembly method, surface durability
  *
- * Each question template specifies:
- * - field: dotted path into DesignSpec
- * - questions: { zh, en } question text
- * - options: { zh, en } preset clickable options (always includes "Other")
- * - priority: lower = ask earlier
+ * Questions serve as strong guidance for the LLM, which can customize further.
  */
 
 export interface QuestionTemplate {
@@ -26,97 +25,131 @@ export const QUESTION_BANKS: Record<string, QuestionTemplate[]> = {
   product: [
     {
       field: "dimensions.approximateSize",
-      questions: { zh: "大約尺寸是多少？", en: "What are the approximate dimensions?" },
+      questions: { zh: "精確尺寸？請輸入 長x寬x高（mm），例如 400x300x200mm", en: "Exact dimensions? Enter LxWxH in mm, e.g. 400x300x200mm" },
       options: {
-        zh: ["小於 100mm", "100–200mm", "200–500mm", "大於 500mm", "不確定"],
-        en: ["Under 100mm", "100–200mm", "200–500mm", "Over 500mm", "Unsure"],
+        zh: ["100x100x100mm", "200x150x100mm", "300x200x150mm", "400x300x200mm", "自訂 LxWxH", "不確定"],
+        en: ["100x100x100mm", "200x150x100mm", "300x200x150mm", "400x300x200mm", "Custom LxWxH", "Unsure"],
       },
       priority: 1,
     },
     {
       field: "visual.material",
-      questions: { zh: "希望用什麼材質打印？", en: "What material should be used for printing?" },
+      questions: { zh: "用什麼材質打印？", en: "What material to print with?" },
       options: {
-        zh: ["PLA (剛性, 易打印)", "PETG (耐用, 耐熱)", "ABS (高強度)", "彈性材料 (TPU)", "樹脂 (高精度)", "不確定"],
-        en: ["PLA (rigid, easy)", "PETG (durable, heat-resistant)", "ABS (strong)", "Flexible (TPU)", "Resin (high detail)", "Unsure"],
+        zh: [
+          "PLA — 新手友善 · 剛性 · 不耐熱(60°C) · 室內用",
+          "PETG — 耐用 · 微彈 · 耐熱80°C · 食品級 · 醫療可用",
+          "ABS — 高強度 · 耐衝擊 · 耐熱100°C · 需通風",
+          "TPU — 橡膠彈性 · 減震 · 手機殼/密封圈",
+          "Resin 樹脂 — 超高精度 · 光滑表面 · 珠寶級 · 需UV固化",
+          "Nylon 尼龍 — 工業級 · 耐磨 · 自潤滑 · 齒輪/軸承",
+          "Wood PLA — 木質外觀 · 可打磨染色 · 裝飾用",
+          "不確定，幫我推薦",
+        ],
+        en: [
+          "PLA — Beginner-friendly · Rigid · Low heat(60°C) · Indoor use",
+          "PETG — Durable · Slight flex · 80°C · Food-safe · Medical OK",
+          "ABS — High strength · Impact-resistant · 100°C · Needs ventilation",
+          "TPU — Rubber-flexible · Shock absorption · Cases/gaskets",
+          "Resin — Ultra detail · Glass-smooth · Jewelry-grade · UV cure needed",
+          "Nylon — Industrial · Wear-resistant · Self-lubricating · Gears",
+          "Wood PLA — Wood look & feel · Sandable · Decorative",
+          "Unsure, recommend for me",
+        ],
       },
       priority: 2,
     },
     {
       field: "visual.color",
-      questions: { zh: "顏色偏好？", en: "Color preference?" },
+      questions: { zh: "顏色偏好？如有不同部位請分別說明", en: "Color preference? Specify per part if different." },
       options: {
-        zh: ["白色", "灰色", "黑色", "藍色", "透明", "自訂", "不確定"],
-        en: ["White", "Grey", "Black", "Blue", "Transparent", "Custom", "Unsure"],
+        zh: ["白色", "灰色", "黑色", "藍色", "透明/半透明", "雙色搭配", "自訂", "不確定"],
+        en: ["White", "Grey", "Black", "Blue", "Transparent/translucent", "Two-tone combo", "Custom", "Unsure"],
       },
       priority: 3,
     },
     {
       field: "structure.mainShape",
-      questions: { zh: "主體是什麼形狀？", en: "What is the main shape?" },
+      questions: { zh: "主體是什麼形狀？描述整體輪廓", en: "What is the main shape? Describe the overall form." },
       options: {
-        zh: ["矩形/方形", "圓柱形", "球形", "不規則/有機形", "盒子狀", "托盤狀", "不確定"],
-        en: ["Rectangular", "Cylindrical", "Spherical", "Irregular/Organic", "Box-like", "Tray-like", "Unsure"],
+        zh: ["矩形/方形盒", "圓柱形", "球形/圓頂", "不規則/有機形", "托盤狀 (淺)", "L形/支架形", "自訂", "不確定"],
+        en: ["Rectangular box", "Cylindrical", "Spherical/dome", "Irregular/Organic", "Tray (shallow)", "L-shaped/bracket", "Custom", "Unsure"],
       },
       priority: 4,
     },
     {
       field: "structure.details",
-      questions: { zh: "有哪些子元件/部件？請逐一列舉", en: "What sub-components/parts does it have? List each one." },
+      questions: { zh: "有哪些子元件/部件？請逐一列舉並描述位置", en: "What sub-components/parts? List each with its position." },
       options: {
-        zh: ["抽屜/隔間", "門/面板", "把手/握柄", "輪子/腳座", "層架/托盤", "鉸鏈/滑軌", "無子元件", "不確定"],
-        en: ["Drawers/Compartments", "Doors/Panels", "Handles/Grips", "Wheels/Feet", "Shelves/Trays", "Hinges/Slides", "No sub-components", "Unsure"],
+        zh: ["抽屜/隔間", "門/面板", "把手/握柄", "輪子/腳座", "層架/托盤", "鉸鏈/滑軌", "掛鉤/支架", "無子元件", "自訂"],
+        en: ["Drawers/Compartments", "Doors/Panels", "Handles/Grips", "Wheels/Feet", "Shelves/Trays", "Hinges/Slides", "Hooks/Mounts", "No sub-components", "Custom"],
       },
       priority: 5,
     },
     {
-      field: "meta.style",
-      questions: { zh: "風格偏好？", en: "Style preference?" },
+      field: "visual.texture",
+      questions: { zh: "表面質感如何？光澤度和觸感", en: "Surface finish? Describe gloss and texture." },
       options: {
-        zh: ["極簡/實用", "醫療級外觀", "工業風", "圓潤/有機", "幾何/科技感", "不確定"],
-        en: ["Minimal/Utilitarian", "Medical-grade", "Industrial", "Smooth/Organic", "Geometric/Tech", "Unsure"],
+        zh: ["光滑啞光", "亮光/光澤", "磨砂/霧面", "粗糙/紋理", "拉絲金屬紋", "完全平滑", "自訂", "不確定"],
+        en: ["Smooth matte", "Glossy/shiny", "Frosted/satin", "Rough/textured", "Brushed metal", "Perfectly smooth", "Custom", "Unsure"],
       },
       priority: 6,
     },
     {
-      field: "structure.hasHoles",
-      questions: { zh: "需要有孔洞或通風口嗎？", en: "Does it need holes or vents?" },
+      field: "meta.style",
+      questions: { zh: "設計風格？", en: "Design style?" },
       options: {
-        zh: ["是 (通風用)", "是 (安裝用)", "否", "不確定"],
-        en: ["Yes (ventilation)", "Yes (mounting)", "No", "Unsure"],
+        zh: ["極簡/實用", "醫療級外觀", "工業風", "圓潤/有機", "幾何/科技感", "古典/裝飾", "無特定風格", "不確定"],
+        en: ["Minimal/Utilitarian", "Medical-grade", "Industrial", "Smooth/Organic", "Geometric/Tech", "Classic/Ornate", "No specific style", "Unsure"],
       },
       priority: 7,
     },
     {
-      field: "structure.isHollow",
-      questions: { zh: "物件是中空的還是實心的？", en: "Is the object hollow or solid?" },
+      field: "visual.edgeTreatment",
+      questions: { zh: "邊緣如何處理？", en: "Edge treatment?" },
       options: {
-        zh: ["中空 (省料/輕量)", "實心 (強度優先)", "部分中空", "不確定"],
-        en: ["Hollow (save material/weight)", "Solid (strength)", "Partially hollow", "Unsure"],
+        zh: ["銳利直角", "輕微倒角 (1-2mm)", "大圓角 (>3mm)", "斜邊", "自訂", "不確定"],
+        en: ["Sharp/square", "Slightly beveled (1-2mm)", "Large rounded (>3mm)", "Chamfered", "Custom", "Unsure"],
       },
       priority: 8,
     },
   ],
 
   // ═══════════════════════════════════════════════════════════════════
-  // Medical — surgical tools, anatomical models, patient-specific...
+  // Medical — surgical tools, clinical equipment, anatomical models...
   // ═══════════════════════════════════════════════════════════════════
   medical: [
     {
       field: "dimensions.approximateSize",
-      questions: { zh: "大約尺寸是多少？", en: "What are the approximate dimensions?" },
+      questions: { zh: "大約尺寸是多少？（醫療器械尺寸至關重要）", en: "Approximate dimensions? (Critical for medical devices)" },
       options: {
-        zh: ["小於 50mm (小型器械)", "50–150mm (手持工具)", "150–300mm (中型)", "大於 300mm (大型)", "不確定"],
-        en: ["Under 50mm (small instrument)", "50–150mm (handheld)", "150–300mm (medium)", "Over 300mm (large)", "Unsure"],
+        zh: ["小於 50mm (微型器械)", "50–150mm (手持工具)", "150–300mm (中型設備)", "300–600mm (大型設備)", "大於 600mm", "自訂", "不確定"],
+        en: ["Under 50mm (micro)", "50–150mm (handheld)", "150–300mm (medium)", "300–600mm (large)", "Over 600mm", "Custom", "Unsure"],
       },
       priority: 1,
     },
     {
       field: "visual.material",
-      questions: { zh: "需要什麼等級的材料？", en: "What material grade is required?" },
+      questions: { zh: "需要什麼等級的材料？（醫療用途有特殊要求）", en: "What material grade is required? (Medical use has special requirements)" },
       options: {
-        zh: ["標準 PLA/PETG", "醫療級 (生物相容)", "可消毒材料", "透明 (觀察用)", "彈性 (模擬組織)", "不確定"],
-        en: ["Standard PLA/PETG", "Medical-grade (biocompatible)", "Sterilizable", "Transparent (observation)", "Flexible (tissue-like)", "Unsure"],
+        zh: [
+          "標準 PLA/PETG — 教學模型 · 低風險 · 易打印",
+          "醫療級 PETG — 生物相容 · 可消毒 · 器械外殼",
+          "TPU 彈性體 — 模擬軟組織 · 彈性輔具 · 減震",
+          "Nylon 尼龍 — 可高壓滅菌 · 高強度 · 手術導板",
+          "透明材料 — 觀察窗/流體管道 · 需透明",
+          "抗菌/抗化學 — 特殊塗層需求",
+          "不確定，幫我推薦",
+        ],
+        en: [
+          "Standard PLA/PETG — Teaching models · Low risk · Easy print",
+          "Medical PETG — Biocompatible · Sterilizable · Device housing",
+          "TPU Flexible — Tissue-like · Soft aids · Shock absorption",
+          "Nylon — Autoclavable · High strength · Surgical guides",
+          "Transparent — Observation/fluid paths · Clarity needed",
+          "Antimicrobial/Chemical — Special coating required",
+          "Unsure, recommend for me",
+        ],
       },
       priority: 2,
     },
@@ -124,70 +157,124 @@ export const QUESTION_BANKS: Record<string, QuestionTemplate[]> = {
       field: "useCase.primaryUse",
       questions: { zh: "主要臨床用途是什麼？", en: "What is the primary clinical use?" },
       options: {
-        zh: ["手術導板/定位", "教學模型", "病人特定植入物", "康復輔具", "器械托盤/整理", "不確定"],
-        en: ["Surgical guide", "Teaching model", "Patient-specific implant", "Rehab device", "Instrument tray", "Unsure"],
+        zh: ["手術導板/定位器", "教學/解剖模型", "病人特定植入物/假體", "康復輔具/矯形器", "器械整理/托盤", "牙科應用", "診斷工具", "自訂", "不確定"],
+        en: ["Surgical guide/positioner", "Teaching/anatomical model", "Patient-specific implant", "Rehab/orthotic device", "Instrument tray/organizer", "Dental application", "Diagnostic tool", "Custom", "Unsure"],
       },
       priority: 3,
     },
     {
-      field: "structure.details",
-      questions: { zh: "有哪些子元件？請逐一說明每個部件", en: "What sub-components does it have? Describe each part." },
+      field: "useCase.environment",
+      questions: { zh: "使用環境？（影響材料選擇和設計）", en: "Usage environment? (Affects material choice and design)" },
       options: {
-        zh: ["抽屜/隔間", "門/面板", "把手/握柄", "輪子/腳座", "層架/托盤", "支架/檯面", "無子元件", "不確定"],
-        en: ["Drawers/Compartments", "Doors/Panels", "Handles/Grips", "Wheels/Feet", "Shelves/Trays", "Arms/Mounts", "No sub-components", "Unsure"],
+        zh: ["手術室 (無菌要求)", "診間/門診", "實驗室", "病房/床邊", "教學/辦公", "居家照護", "自訂", "不確定"],
+        en: ["Operating room (sterile)", "Clinic/outpatient", "Laboratory", "Ward/bedside", "Teaching/office", "Home care", "Custom", "Unsure"],
       },
       priority: 4,
     },
     {
-      field: "visual.material",
-      questions: { zh: "每個部件用什麼材質？請逐一說明", en: "What material for each component? Specify per part." },
+      field: "structure.details",
+      questions: { zh: "有哪些子元件？請逐一說明每個部件的位置和功能", en: "What sub-components? Describe each part's position and function." },
       options: {
-        zh: ["不鏽鋼框架", "粉末塗層鋼", "層壓板面板", "鋁合金", "ABS 塑膠", "矽膠", "其他", "不確定"],
-        en: ["Stainless steel frame", "Powder-coated steel", "Laminate panels", "Aluminum", "ABS plastic", "Silicone", "Other", "Unsure"],
+        zh: ["抽屜/隔間", "門/面板 (鎖定?)", "把手/握柄", "醫療級腳輪", "層架/托盤", "可調節支架", "線纜管理", "無子元件", "自訂"],
+        en: ["Drawers/Compartments", "Doors/Panels (locking?)", "Handles/Grips", "Medical casters", "Shelves/Trays", "Adjustable arms", "Cable management", "No sub-components", "Custom"],
       },
       priority: 5,
+    },
+    {
+      field: "visual.color",
+      questions: { zh: "顏色？（醫療環境通常有標準）", en: "Color? (Medical environments often have standards)" },
+      options: {
+        zh: ["白色 (醫療標準)", "淺灰", "淺藍/手術藍", "不鏽鋼色", "自訂", "不確定"],
+        en: ["White (medical standard)", "Light grey", "Surgical blue", "Stainless steel", "Custom", "Unsure"],
+      },
+      priority: 6,
+    },
+    {
+      field: "visual.texture",
+      questions: { zh: "表面要求？（醫療清潔需求）", en: "Surface requirements? (Medical cleaning needs)" },
+      options: {
+        zh: ["完全平滑無孔 (易清潔)", "抗菌塗層", "輕微紋理 (防滑)", "啞光 (減少反光)", "自訂", "不確定"],
+        en: ["Smooth non-porous (easy clean)", "Antimicrobial coating", "Slight texture (non-slip)", "Matte (low glare)", "Custom", "Unsure"],
+      },
+      priority: 7,
+    },
+    {
+      field: "structure.hasHoles",
+      questions: { zh: "需要通風/排水孔嗎？", en: "Need ventilation or drainage holes?" },
+      options: {
+        zh: ["是 (通風用)", "是 (排水/流體)", "否", "不確定"],
+        en: ["Yes (ventilation)", "Yes (drainage/fluid)", "No", "Unsure"],
+      },
+      priority: 8,
     },
   ],
 
   // ═══════════════════════════════════════════════════════════════════
-  // Robot / Vehicle — mechanical, hard-surface, joints...
+  // Robot / Vehicle / Mechanical — hard-surface, joints, structural...
   // ═══════════════════════════════════════════════════════════════════
   robot: [
     {
       field: "structure.details",
-      questions: { zh: "機械細節程度？", en: "Level of mechanical detail?" },
+      questions: { zh: "機械細節程度？請描述每個可見的機械特徵", en: "Level of mechanical detail? Describe each visible mechanical feature." },
       options: {
-        zh: ["簡化 (示意用)", "中等 (可見關節)", "精細 (所有螺絲/面板線)", "不確定"],
-        en: ["Simplified (conceptual)", "Medium (visible joints)", "High (all screws/panels)", "Unsure"],
+        zh: ["簡化 (概念示意)", "中等 (可見關節/面板線)", "精細 (所有螺絲/鉚釘/液壓桿)", "超精細 (內部結構可見)", "不確定"],
+        en: ["Simplified (conceptual)", "Medium (joints/panel lines)", "High (screws/rivets/hydraulics)", "Ultra (internal visible)", "Unsure"],
       },
       priority: 1,
     },
     {
       field: "visual.material",
-      questions: { zh: "主要材質質感？", en: "Main material look?" },
+      questions: { zh: "主要材質質感？不同部位可用不同材質", en: "Main material look? Different parts can differ." },
       options: {
-        zh: ["金屬感", "塑膠/裝甲板", "啞光", "亮光", "雙色/分色", "不確定"],
-        en: ["Metallic", "Plastic/Armor panel", "Matte", "Glossy", "Two-tone", "Unsure"],
+        zh: ["金屬感 (鋼/鋁)", "塑膠/裝甲板", "啞光戰術", "亮光/烤漆", "雙色分色", " weathered/舊化", "自訂", "不確定"],
+        en: ["Metallic (steel/aluminum)", "Plastic/Armor panel", "Matte tactical", "Glossy/painted", "Two-tone", "Weathered/worn", "Custom", "Unsure"],
       },
       priority: 2,
     },
     {
       field: "structure.hasMovingParts",
-      questions: { zh: "有活動關節嗎？", en: "Does it have moving joints?" },
+      questions: { zh: "有活動關節/機構嗎？什麼類型？", en: "Moving joints/mechanisms? What type?" },
       options: {
-        zh: ["是 (可動關節)", "否 (靜態模型)", "不確定"],
-        en: ["Yes (articulated)", "No (static model)", "Unsure"],
+        zh: ["是 (旋轉關節)", "是 (滑動機構)", "是 (鉸鏈)", "是 (球關節)", "否 (靜態模型)", "不確定"],
+        en: ["Yes (rotation joints)", "Yes (sliding)", "Yes (hinges)", "Yes (ball joints)", "No (static model)", "Unsure"],
       },
       priority: 3,
     },
     {
       field: "dimensions.approximateSize",
-      questions: { zh: "模型尺寸？", en: "Model size?" },
+      questions: { zh: "模型尺寸？", en: "Model dimensions?" },
       options: {
-        zh: ["小於 100mm", "100–300mm", "大於 300mm", "桌面級", "不確定"],
-        en: ["Under 100mm", "100–300mm", "Over 300mm", "Desktop scale", "Unsure"],
+        zh: ["微型 (<50mm)", "小型 (50–100mm)", "中型 (100–300mm)", "大型 (300mm+)", "桌面展示級", "自訂", "不確定"],
+        en: ["Micro (<50mm)", "Small (50–100mm)", "Medium (100–300mm)", "Large (300mm+)", "Desktop display", "Custom", "Unsure"],
       },
       priority: 4,
+    },
+    {
+      field: "visual.color",
+      questions: { zh: "顏色方案？", en: "Color scheme?" },
+      options: {
+        zh: ["單色金屬灰", "軍武綠/沙色", "黑白對比", "鮮明警示色", "自訂", "不確定"],
+        en: ["Monochrome metal grey", "Military green/tan", "Black & white contrast", "Bright warning colors", "Custom", "Unsure"],
+      },
+      priority: 5,
+    },
+    {
+      field: "composition.poseOrOrientation",
+      questions: { zh: "擺放姿勢？", en: "Pose/orientation?" },
+      options: {
+        zh: ["中立站立", "動態動作姿勢", "展開/變形狀態", "收納/折疊狀態", "懸浮展示", "不確定"],
+        en: ["Neutral standing", "Dynamic action pose", "Deployed/transformed", "Folded/stowed", "Floating display", "Unsure"],
+      },
+      priority: 6,
+    },
+    {
+      field: "visual.edgeTreatment",
+      questions: { zh: "邊緣風格？", en: "Edge style?" },
+      options: {
+        zh: ["銳利機械邊", "倒角面板邊", "圓潤裝甲", "混合 (銳利+圓潤)", "不確定"],
+        en: ["Sharp mechanical", "Beveled panel edges", "Rounded armor", "Mixed (sharp+round)", "Unsure"],
+      },
+      priority: 7,
     },
   ],
 
@@ -199,8 +286,8 @@ export const QUESTION_BANKS: Record<string, QuestionTemplate[]> = {
       field: "composition.poseOrOrientation",
       questions: { zh: "角色姿勢？", en: "Character pose?" },
       options: {
-        zh: ["T-pose (標準)", "A-pose", "動態姿勢", "坐姿", "不確定"],
-        en: ["T-pose (standard)", "A-pose", "Action pose", "Sitting", "Unsure"],
+        zh: ["T-pose (標準/綁定用)", "A-pose", "動態姿勢", "坐姿", "懸浮/飛行", "自訂", "不確定"],
+        en: ["T-pose (standard/rigging)", "A-pose", "Action pose", "Sitting", "Floating/flying", "Custom", "Unsure"],
       },
       priority: 1,
     },
@@ -208,8 +295,8 @@ export const QUESTION_BANKS: Record<string, QuestionTemplate[]> = {
       field: "meta.style",
       questions: { zh: "藝術風格？", en: "Art style?" },
       options: {
-        zh: ["寫實", "卡通/Q版", "動漫", "科幻", "低面數 (low poly)", "不確定"],
-        en: ["Realistic", "Cartoon/Chibi", "Anime", "Sci-fi", "Low poly", "Unsure"],
+        zh: ["寫實/真人比例", "卡通/Q版 (大頭)", "日系動漫", "美系漫畫", "科幻/賽博", "低面數 (low poly)", "自訂", "不確定"],
+        en: ["Realistic", "Cartoon/Chibi (big head)", "Anime style", "Comic/Western", "Sci-fi/Cyber", "Low poly", "Custom", "Unsure"],
       },
       priority: 2,
     },
@@ -217,74 +304,119 @@ export const QUESTION_BANKS: Record<string, QuestionTemplate[]> = {
       field: "dimensions.approximateSize",
       questions: { zh: "公仔尺寸？", en: "Figurine size?" },
       options: {
-        zh: ["小於 50mm (迷你)", "50–100mm (標準公仔)", "100–200mm (大公仔)", "大於 200mm", "不確定"],
-        en: ["Under 50mm (mini)", "50–100mm (standard)", "100–200mm (large)", "Over 200mm", "Unsure"],
+        zh: ["迷你 (<30mm)", "小 (30–50mm, 扭蛋級)", "中 (50–100mm, 標準公仔)", "大 (100–200mm)", "超大 (>200mm, 雕像級)", "自訂", "不確定"],
+        en: ["Mini (<30mm)", "Small (30–50mm, gacha)", "Medium (50–100mm, standard)", "Large (100–200mm)", "Extra large (>200mm, statue)", "Custom", "Unsure"],
       },
       priority: 3,
     },
     {
       field: "visual.color",
-      questions: { zh: "上色方案？", en: "Color scheme?" },
+      questions: { zh: "上色方案？", en: "Color/printing scheme?" },
       options: {
-        zh: ["單色 (後期上色)", "多色打印", "素體灰色", "不確定"],
-        en: ["Single color (paint later)", "Multi-color print", "Primer grey", "Unsure"],
+        zh: ["單色灰 (後期手塗)", "多色打印", "素體白 (底漆用)", "透明樹脂", "自訂", "不確定"],
+        en: ["Grey primer (hand-paint later)", "Multi-color print", "White primer", "Clear resin", "Custom", "Unsure"],
       },
       priority: 4,
+    },
+    {
+      field: "visual.texture",
+      questions: { zh: "表面細節要求？", en: "Surface detail requirements?" },
+      options: {
+        zh: ["平滑 (卡通風格)", "中等細節 (衣物褶皺)", "高細節 (皮膚紋理/鱗片)", "自訂", "不確定"],
+        en: ["Smooth (cartoon style)", "Medium (fabric folds)", "High (skin texture/scales)", "Custom", "Unsure"],
+      },
+      priority: 5,
+    },
+    {
+      field: "structure.isHollow",
+      questions: { zh: "打印方式？", en: "Print method?" },
+      options: {
+        zh: ["實心 (小型公仔)", "中空 (省料/大型)", "分件打印 (組裝)", "不確定"],
+        en: ["Solid (small figurine)", "Hollow (save material/large)", "Multi-part (assemble)", "Unsure"],
+      },
+      priority: 6,
     },
   ],
 
   // ═══════════════════════════════════════════════════════════════════
-  // Jewelry — small, high-detail, precious materials...
+  // Jewelry — small, high-detail, precious metal look...
   // ═══════════════════════════════════════════════════════════════════
   jewelry: [
     {
       field: "visual.material",
-      questions: { zh: "金屬類型？", en: "Metal type?" },
+      questions: { zh: "金屬類型/顏色？", en: "Metal type/color?" },
       options: {
-        zh: ["銀", "金", "玫瑰金", "鉑金", "黃銅", "不確定"],
-        en: ["Silver", "Gold", "Rose gold", "Platinum", "Brass", "Unsure"],
+        zh: ["銀/白金", "黃金", "玫瑰金", "鉑金", "黃銅/復古", "黑化/氧化", "雙色", "自訂", "不確定"],
+        en: ["Silver/White gold", "Yellow gold", "Rose gold", "Platinum", "Brass/vintage", "Blackened/oxidized", "Two-tone", "Custom", "Unsure"],
       },
       priority: 1,
     },
     {
       field: "dimensions.approximateSize",
-      questions: { zh: "首飾尺寸？", en: "Jewelry size?" },
+      questions: { zh: "首飾類型和尺寸？", en: "Jewelry type and size?" },
       options: {
-        zh: ["戒指", "手鐲/手鏈", "項鍊墜", "耳環", "胸針", "不確定"],
-        en: ["Ring", "Bracelet/Bangle", "Pendant", "Earrings", "Brooch", "Unsure"],
+        zh: ["戒指 (請輸入戒圍)", "手鐲/手鏈", "項鍊墜", "耳環 (勾式/夾式)", "胸針/別針", "袖扣", "自訂", "不確定"],
+        en: ["Ring (specify size)", "Bracelet/Bangle", "Pendant", "Earrings (hook/clip)", "Brooch/Pin", "Cufflinks", "Custom", "Unsure"],
       },
       priority: 2,
     },
     {
       field: "structure.details",
-      questions: { zh: "有寶石鑲嵌嗎？", en: "Any gem settings?" },
+      questions: { zh: "有寶石/鑲嵌嗎？請說明寶石類型和鑲嵌方式", en: "Gemstones/settings? Specify gem type and setting style." },
       options: {
-        zh: ["是 (有寶石位)", "否 (純金屬)", "不確定"],
-        en: ["Yes (stone setting)", "No (plain metal)", "Unsure"],
+        zh: ["是 (爪鑲)", "是 (包鑲/軌道鑲)", "是 (密釘鑲)", "是 (槽鑲)", "否 (純金屬設計)", "不確定"],
+        en: ["Yes (prong setting)", "Yes (bezel/channel)", "Yes (pavé)", "Yes (channel set)", "No (plain metal)", "Unsure"],
       },
       priority: 3,
+    },
+    {
+      field: "visual.finish",
+      questions: { zh: "表面處理？", en: "Surface finish?" },
+      options: {
+        zh: ["高拋光/鏡面", "啞光/緞面", "錘打紋理", "雕刻/鏤空", "珠邊", "自訂", "不確定"],
+        en: ["High polish/mirror", "Matte/satin", "Hammered texture", "Engraved/filigree", "Milgrain", "Custom", "Unsure"],
+      },
+      priority: 4,
+    },
+    {
+      field: "meta.style",
+      questions: { zh: "設計風格？", en: "Design style?" },
+      options: {
+        zh: ["經典/單鑽", "復古/維多利亞", "現代/幾何", "極簡", "自然/花卉", "Art Deco", "自訂", "不確定"],
+        en: ["Classic/solitaire", "Vintage/Victorian", "Modern/Geometric", "Minimalist", "Nature/Floral", "Art Deco", "Custom", "Unsure"],
+      },
+      priority: 5,
+    },
+    {
+      field: "composition.viewAngle",
+      questions: { zh: "展示角度？", en: "Display angle?" },
+      options: {
+        zh: ["正面 (鑲嵌面朝前)", "3/4 角度 (最佳展示)", "側面輪廓", "頂視圖", "多角度", "不確定"],
+        en: ["Front (setting facing)", "3/4 angle (best display)", "Side profile", "Top view", "Multi-angle", "Unsure"],
+      },
+      priority: 6,
     },
   ],
 
   // ═══════════════════════════════════════════════════════════════════
-  // Furniture — larger objects, load-bearing, aesthetic...
+  // Furniture — larger, structural, aesthetic, functional...
   // ═══════════════════════════════════════════════════════════════════
   furniture: [
     {
       field: "dimensions.approximateSize",
-      questions: { zh: "家具尺寸？", en: "Furniture dimensions?" },
+      questions: { zh: "家具尺寸？（比例模型還是實際尺寸）", en: "Furniture dimensions? (Scale model or actual size?)" },
       options: {
-        zh: ["微型 (<100mm)", "桌面級 (100–300mm)", "1:6 比例", "1:12 比例", "自訂", "不確定"],
-        en: ["Miniature (<100mm)", "Desktop (100–300mm)", "1:6 scale", "1:12 scale", "Custom", "Unsure"],
+        zh: ["微型 (<100mm, 模型)", "桌面級 (100–300mm)", "1:6 比例 (娃娃屋)", "1:12 比例 (標準微縮)", "實際尺寸", "自訂", "不確定"],
+        en: ["Miniature (<100mm)", "Desktop (100–300mm)", "1:6 scale (dollhouse)", "1:12 scale (standard mini)", "Actual size", "Custom", "Unsure"],
       },
       priority: 1,
     },
     {
       field: "visual.material",
-      questions: { zh: "材質質感？", en: "Material look?" },
+      questions: { zh: "材質質感？（打印時模擬什麼材質）", en: "Material look? (What material to simulate in print)" },
       options: {
-        zh: ["木紋", "金屬", "布料/軟墊", "塑膠", "混合材質", "不確定"],
-        en: ["Wood grain", "Metal", "Fabric/Upholstered", "Plastic", "Mixed", "Unsure"],
+        zh: ["木紋", "金屬", "布料/軟墊", "皮革", "塑膠/亞克力", "藤編/編織", "大理石/石材", "混合材質", "自訂", "不確定"],
+        en: ["Wood grain", "Metal", "Fabric/Upholstered", "Leather", "Plastic/Acrylic", "Wicker/Woven", "Marble/Stone", "Mixed", "Custom", "Unsure"],
       },
       priority: 2,
     },
@@ -292,10 +424,37 @@ export const QUESTION_BANKS: Record<string, QuestionTemplate[]> = {
       field: "meta.style",
       questions: { zh: "設計風格？", en: "Design style?" },
       options: {
-        zh: ["現代簡約", "北歐風", "工業風", "古典", "不確定"],
-        en: ["Modern", "Scandinavian", "Industrial", "Classic", "Unsure"],
+        zh: ["現代簡約", "北歐/Scandinavian", "工業風", "中世紀現代", "古典/巴洛克", "日式/禪風", "鄉村/農舍", "自訂", "不確定"],
+        en: ["Modern minimal", "Scandinavian", "Industrial", "Mid-century modern", "Classic/Baroque", "Japanese/Zen", "Farmhouse/Rustic", "Custom", "Unsure"],
       },
       priority: 3,
+    },
+    {
+      field: "structure.details",
+      questions: { zh: "有哪些結構部件？", en: "Structural components?" },
+      options: {
+        zh: ["抽屜", "門/櫃門", "層板/隔板", "椅腿/桌腳", "扶手", "靠背", "軟墊/坐墊", "五金配件", "自訂", "不確定"],
+        en: ["Drawers", "Doors/cabinet doors", "Shelves/dividers", "Legs/feet", "Armrests", "Backrest", "Cushion/seat pad", "Hardware/fittings", "Custom", "Unsure"],
+      },
+      priority: 4,
+    },
+    {
+      field: "visual.texture",
+      questions: { zh: "表面處理？", en: "Surface treatment?" },
+      options: {
+        zh: ["光滑啞光", "木紋紋理", "亮光漆面", "啞光漆面", "原始/粗糙", "做舊/復古", "自訂", "不確定"],
+        en: ["Smooth matte", "Wood grain texture", "Glossy lacquer", "Matte lacquer", "Raw/rough", "Distressed/vintage", "Custom", "Unsure"],
+      },
+      priority: 5,
+    },
+    {
+      field: "visual.color",
+      questions: { zh: "顏色方案？", en: "Color scheme?" },
+      options: {
+        zh: ["白色", "淺木色/橡木", "深木色/胡桃", "灰色", "黑色", "彩色", "雙色", "自訂", "不確定"],
+        en: ["White", "Light wood/Oak", "Dark wood/Walnut", "Grey", "Black", "Colorful", "Two-tone", "Custom", "Unsure"],
+      },
+      priority: 6,
     },
   ],
 
@@ -307,8 +466,8 @@ export const QUESTION_BANKS: Record<string, QuestionTemplate[]> = {
       field: "structure.mainShape",
       questions: { zh: "基本幾何形狀？", en: "Basic geometric shape?" },
       options: {
-        zh: ["矩形", "圓柱/圓形", "球形", "有機形", "多邊形", "不確定"],
-        en: ["Rectangular", "Cylindrical/Round", "Spherical", "Organic", "Polygonal", "Unsure"],
+        zh: ["矩形/方形", "圓柱/圓形", "球形", "有機/自由形", "多邊形", "自訂", "不確定"],
+        en: ["Rectangular", "Cylindrical/Round", "Spherical", "Organic/freeform", "Polygonal", "Custom", "Unsure"],
       },
       priority: 1,
     },
@@ -316,8 +475,8 @@ export const QUESTION_BANKS: Record<string, QuestionTemplate[]> = {
       field: "visual.material",
       questions: { zh: "材質偏好？", en: "Material preference?" },
       options: {
-        zh: ["PLA (剛性)", "PETG (耐用)", "彈性", "透明", "金屬感", "不確定"],
-        en: ["PLA (rigid)", "PETG (durable)", "Flexible", "Transparent", "Metallic", "Unsure"],
+        zh: ["PLA (剛性)", "PETG (耐用)", "TPU (彈性)", "透明", "金屬感", "自訂", "不確定"],
+        en: ["PLA (rigid)", "PETG (durable)", "TPU (flexible)", "Transparent", "Metallic look", "Custom", "Unsure"],
       },
       priority: 2,
     },
@@ -325,8 +484,8 @@ export const QUESTION_BANKS: Record<string, QuestionTemplate[]> = {
       field: "dimensions.approximateSize",
       questions: { zh: "大約尺寸？", en: "Approximate size?" },
       options: {
-        zh: ["小 (<100mm)", "中 (100–300mm)", "大 (>300mm)", "不確定"],
-        en: ["Small (<100mm)", "Medium (100–300mm)", "Large (>300mm)", "Unsure"],
+        zh: ["小 (<100mm)", "中 (100–300mm)", "大 (>300mm)", "自訂", "不確定"],
+        en: ["Small (<100mm)", "Medium (100–300mm)", "Large (>300mm)", "Custom", "Unsure"],
       },
       priority: 3,
     },
@@ -346,8 +505,8 @@ export const QUESTION_BANKS: Record<string, QuestionTemplate[]> = {
       field: "meta.assetType",
       questions: { zh: "這是什麼類型的物件？", en: "What type of object is this?" },
       options: {
-        zh: ["產品/工具", "醫療器械", "機械/機器人", "角色/公仔", "首飾", "家具", "抽象物件", "不確定"],
-        en: ["Product/Tool", "Medical device", "Mechanical/Robot", "Character/Figurine", "Jewelry", "Furniture", "Abstract", "Unsure"],
+        zh: ["產品/工具", "醫療器械", "機械/機器人", "角色/公仔", "首飾", "家具", "車輛/載具", "抽象物件", "不確定"],
+        en: ["Product/Tool", "Medical device", "Mechanical/Robot", "Character/Figurine", "Jewelry", "Furniture", "Vehicle", "Abstract", "Unsure"],
       },
       priority: 1,
     },
@@ -364,9 +523,72 @@ export const QUESTION_BANKS: Record<string, QuestionTemplate[]> = {
 };
 
 /**
+ * Map asset type string to question bank key.
+ * Handles aliases and close matches.
+ */
+const ASSET_TYPE_ALIASES: Record<string, string> = {
+  product: "product",
+  prop: "product",
+  tool: "product",
+  container: "product",
+  organizer: "product",
+  medical: "medical",
+  clinical: "medical",
+  device: "medical",
+  surgical: "medical",
+  dental: "medical",
+  robot: "robot",
+  mechanical: "robot",
+  vehicle: "robot",
+  drone: "robot",
+  character: "character",
+  creature: "character",
+  figurine: "character",
+  mini: "character",
+  jewelry: "jewelry",
+  jewellery: "jewelry",
+  gem: "jewelry",
+  ring: "jewelry",
+  furniture: "furniture",
+  cabinet: "furniture",
+  shelf: "furniture",
+  chair: "furniture",
+  table: "furniture",
+  abstract_object: "abstract_object",
+  abstract: "abstract_object",
+  sculpture: "abstract_object",
+  unknown: "unknown",
+};
+
+/**
  * Look up the question bank for a given asset type.
- * Falls back to "unknown" bank if no specific bank exists.
+ * Uses alias mapping, falls back to "unknown".
  */
 export function getQuestionBank(assetType: string): QuestionTemplate[] {
-  return QUESTION_BANKS[assetType] || QUESTION_BANKS.unknown;
+  const key = ASSET_TYPE_ALIASES[assetType.toLowerCase()] || ASSET_TYPE_ALIASES.unknown;
+  return QUESTION_BANKS[key] || QUESTION_BANKS.unknown;
+}
+
+/**
+ * Get the recommended max Q&A rounds for an asset type.
+ * Complex types (medical, robot, furniture) need more rounds.
+ */
+export function getMaxRounds(assetType: string): number {
+  const key = ASSET_TYPE_ALIASES[assetType.toLowerCase()] || "unknown";
+  switch (key) {
+    case "medical":
+      return 10; // Deep clinical requirements
+    case "robot":
+      return 9;  // Many mechanical details
+    case "furniture":
+      return 9;  // Structural + aesthetic details
+    case "jewelry":
+      return 8;  // Many fine details
+    case "product":
+      return 8;  // Components + material options
+    case "character":
+      return 7;  // Pose + style + color
+    default:
+      return 5;
+  }
 }

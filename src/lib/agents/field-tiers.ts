@@ -159,9 +159,9 @@ export const FIELD_PRIORITIES: FieldMeta[] = [
 
 /** Termination conditions for the Q&A loop */
 export const TERMINATION = {
-  MAX_ROUNDS: 8,           // Safety cap only — stop if somehow still not done
-  REQUIRED_THRESHOLD: 1.0, // 100% of REQUIRED fields (name, dimensions, material)
-  IMPORTANT_THRESHOLD: 0.75, // 75% of IMPORTANT fields — ask until most are filled
+  MAX_ROUNDS: 8,
+  REQUIRED_THRESHOLD: 1.0,   // 100% — ALL required fields must be filled
+  IMPORTANT_THRESHOLD: 1.0,  // 100% — ALL important fields must be filled
 };
 
 /**

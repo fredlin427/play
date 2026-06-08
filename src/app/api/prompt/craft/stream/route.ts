@@ -3,12 +3,14 @@
  * Frontend receives a Server-Sent Events stream so the user sees
  * the prompt being written in real-time instead of a spinner.
  *
- * Saves a PromptVersion to DB before sending the DONE event so
- * the frontend has a valid promptVersionId for image generation.
+ * V2: After the positive stream completes, generates an object-specific
+ * negative prompt that references the ACTUAL positive text (context-aware),
+ * so negatives target what could realistically go wrong with this prompt.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { buildSDPrompt } from "@/lib/agents/prompt-template";
-import { callLLMStream } from "@/lib/llm";
+import { extractPolishData, buildPositivePrompt, buildNegativePrompt, cleanPositive } from "@/lib/agents/prompt-craft";
+import { callLLMStream, callLLM } from "@/lib/llm";
 import { prisma } from "@/lib/prisma";
 import type { DesignSpec } from "@/lib/schemas";
 
@@ -23,37 +25,24 @@ export async function POST(request: NextRequest) {
 
     const designSpec = spec as DesignSpec;
 
+    // Debug: log what spec data was received
+    console.log("[Craft Stream] Received spec:", JSON.stringify({
+      name: designSpec.subject?.name,
+      material: designSpec.visual?.material,
+      color: designSpec.visual?.color,
+      shape: designSpec.structure?.mainShape,
+      dims: designSpec.dimensions?.approximateSize,
+      surf: [designSpec.visual?.texture, designSpec.visual?.finish].filter(Boolean).join(" "),
+      edge: designSpec.visual?.edgeTreatment,
+      style: designSpec.meta?.style,
+      comp: designSpec.structure?.details,
+    }));
+
     // Quick template (for fallback)
     const sd = buildSDPrompt(designSpec);
 
-    // Build data for LLM
-    const name = designSpec.subject.name || "object";
-    const color = designSpec.visual.color || "";
-    const material = designSpec.visual.material || "";
-    const shape = designSpec.structure.mainShape || "";
-    const dims = designSpec.dimensions.approximateSize || "";
-    const surf = [designSpec.visual.texture, designSpec.visual.finish].filter(Boolean).join(" ");
-    const comp = designSpec.structure.details || "";
-    const edge = designSpec.visual.edgeTreatment || "";
-    const style = designSpec.meta.style || "";
-
-    const polishPrompt = `Rewrite this structured product data into ONE flowing visual-description paragraph in English.
-
-DATA:
-- Object: ${name}
-${color ? `- Color: ${color}` : ""}
-${material ? `- Material: ${material}` : ""}
-${shape ? `- Overall shape: ${shape}` : ""}
-${dims ? `- Size: ${dims}` : ""}
-${surf ? `- Surface: ${surf}` : ""}
-${edge ? `- Edge treatment: ${edge}` : ""}
-${style ? `- Design style: ${style}` : ""}
-${comp ? `- Component details: ${comp}` : ""}
-
-Style example:
-"A modern minimalist white five-drawer storage cabinet, rectangular vertical box shape, clean flat panels, matte white finish, front-facing five stacked drawers, each drawer has a centered black recessed semicircular cut-out handle near the top edge..."
-
-Rules: ONE flowing sentence-chain — spatial positioning — each component with its own details — specific, never vague — under 250 words — Output ONLY the description.`;
+    // Extract all spec fields into flat record
+    const d = extractPolishData(designSpec);
 
     // Create a ReadableStream for SSE
     const encoder = new TextEncoder();
@@ -63,25 +52,46 @@ Rules: ONE flowing sentence-chain — spatial positioning — each component wit
         let finalPositive = sd.positive;
         let finalNegative = sd.negative;
         try {
+          // ── Phase 1: Stream positive prompt token-by-token ──────────
+          // V2: buildPositivePrompt now includes Z-Image-specific instructions
+          //     and front-loads key visual info in the first ~150 chars
           for await (const token of callLLMStream(
-            "You are a product-design copywriter. Write detailed single-paragraph visual descriptions. Output ONLY the description.",
-            polishPrompt,
-            { temperature: 0.5, maxTokens: 500 }
+            "You are a prompt engineer for Z-Image-Turbo (flow-matching, CFG=1.0). Write detailed single-paragraph visual descriptions with front-loaded key info. Output ONLY the description.",
+            buildPositivePrompt(d),
+            { temperature: 0.5, maxTokens: 600 }
           )) {
             fullText += token;
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token, full: sanitize(fullText) })}\n\n`));
           }
 
-          const cleaned = fullText.length > 30 ? fullText.trim()
-            .replace(/^single object,?\s*/i, "").replace(/^white background,?\s*/i, "")
-            .replace(/^studio lighting,?\s*/i, "").replace(/^product (photo|photography),?\s*/i, "")
-            .replace(/^3d[- ]ready,?\s*/i, "").replace(/^isolated,?\s*/i, "")
-            .replace(/^positive prompt:?\s*/i, "").replace(/^description:?\s*/i, "")
-            .trim()
+          const cleaned = fullText.length > 30
+            ? cleanPositive(fullText.trim())
             : sd.positive;
           finalPositive = cleaned;
 
-          // Save PromptVersion to DB so image generation has a valid ID (Bug #1 fix)
+          // ── Phase 2: Generate context-aware negative prompt ──────────
+          // V2: buildNegativePrompt receives the ACTUAL positive text,
+          //     so negatives specifically target what could go wrong
+          try {
+            const negPolished = await callLLM(
+              "You are an image-generation prompt engineer. Generate concise negative prompts targeting specific weaknesses in the positive prompt. Output ONLY the comma-separated negative text.",
+              buildNegativePrompt(d, finalPositive),
+              { temperature: 0.4, maxTokens: 250 }
+            );
+            const negText = (negPolished.content || "").trim()
+              .replace(/^negative prompt:?\s*/i, "")
+              .replace(/^negatives?:?\s*/i, "");
+            if (negText.length > 20 && negText.length < 500) {
+              finalNegative = negText;
+              console.log("[Craft Stream] Negative OK:", negText.slice(0, 80) + "...");
+            } else {
+              console.warn("[Craft Stream] Negative rejected (len=" + negText.length + "):", negText.slice(0, 100));
+            }
+          } catch (e) {
+            console.warn("[Craft Stream] Negative failed:", String(e).slice(0, 100));
+          }
+
+          // ── Phase 3: Save PromptVersion to DB ───────────────────────
           let promptVersionId = "";
           if (projectId) {
             try {
@@ -97,6 +107,8 @@ Rules: ONE flowing sentence-chain — spatial positioning — each component wit
                   negativePrompt: finalNegative,
                   styleNotes: "",
                   clarityScore: 0.8, isApproved: false,
+                  // Save previous feedback if this is a re-generate
+                  feedback: "",
                 },
               });
               promptVersionId = pv.id;

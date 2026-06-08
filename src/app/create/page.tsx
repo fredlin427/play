@@ -9,18 +9,20 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import { SketchPad } from "@/components/create/SketchPad";
+import { ImageAnnotator } from "@/components/create/ImageAnnotator";
 import { ReferenceImageUploader } from "@/components/create/ReferenceImageUploader";
 import { ReferenceModelUploader } from "@/components/create/ReferenceModelUploader";
-import { ArrowRight, Sparkles, Pencil, ImagePlus, Box, Loader2, Copy, Check, RefreshCw, Wand2, Lightbulb, ChevronDown, ChevronUp, MessageSquare, AlertCircle } from "lucide-react";
+import { ArrowRight, Sparkles, Pencil, ImagePlus, Box, Loader2, Copy, Check, RefreshCw, Wand2, Lightbulb, ChevronDown, ChevronUp, MessageSquare, AlertCircle, Plus } from "lucide-react";
 import type { DesignSpec } from "@/lib/schemas";
 import { EMPTY_SPEC } from "@/lib/schemas";
 import type { AskContext } from "@/lib/agents/prompt-helper";
 import type { CoverageReport } from "@/lib/agents/coverage";
-import { TERMINATION } from "@/lib/agents/field-tiers";
+import { getMaxRounds } from "@/lib/agents/question-banks";
 import { getSpecPath } from "@/lib/agents/prompt-template";
 import { getCoverage } from "@/lib/agents/coverage";
+import { applyPromptImprovements } from "@/lib/agents/prompt-craft";
+import { MATERIAL_GUIDE, getMaterialInfo } from "@/lib/agents/material-guide";
 
-const CRITICAL_FIELDS = ["subject.name","meta.assetType","meta.generationGoal","visual.material","meta.style","visual.color","dimensions.approximateSize","useCase.primaryUse"];
 const ALL_FIELDS = [
   {path:"subject.name",zh:"物品名",en:"Name"},
   {path:"meta.assetType",zh:"類型",en:"Type"},
@@ -50,8 +52,7 @@ function setField(spec: DesignSpec, path: string, value: string): DesignSpec {
   let obj: Record<string,unknown> = result;
   for (let i=0;i<parts.length-1;i++) obj=obj[parts[i]] as Record<string,unknown>;
   const last = parts[parts.length-1];
-  if (last==="keyFeatures") obj[last]=value.split(",").map((s:string)=>s.trim()).filter(Boolean);
-  else obj[last]=value;
+  obj[last]=value;
   return result;
 }
 
@@ -77,18 +78,16 @@ function CreatePageInner() {
   const router = useRouter();
   const { lang:toggleLang, setLang, t } = useLang();
 
-  // Restore previous session on mount
-  const saved = loadSession();
-
+  const [hydrated, setHydrated] = useState(false);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [pid, setPid] = useState<string|null>(saved?.pid || null);
-  const [convLang, setConvLang] = useState<"zh"|"en"|null>(saved?.convLang || null);
-  const [msgs, setMsgs] = useState<Array<{role:"user"|"ai";text:string}>>(saved?.msgs || []);
+  const [pid, setPid] = useState<string|null>(null);
+  const [convLang, setConvLang] = useState<"zh"|"en"|null>(null);
+  const [msgs, setMsgs] = useState<Array<{role:"user"|"ai";text:string}>>([]);
 
   // Spec state
-  const [spec, setSpec] = useState<DesignSpec>(saved?.spec || EMPTY_SPEC);
-  const [specReady, setSpecReady] = useState(saved?.specReady || false);
+  const [spec, setSpec] = useState<DesignSpec>(EMPTY_SPEC);
+  const [specReady, setSpecReady] = useState(false);
   const [showSpec, setShowSpec] = useState(false);
   const [progress, setProgress] = useState(0);
 
@@ -107,7 +106,15 @@ function CreatePageInner() {
   const [result, setResult] = useState<{id?:string;content?:string;craftedPrompt:string;negativePrompt:string}|null>(null);
   const [copied, setCopied] = useState(false);
   const [genLoading, setGenLoading] = useState(false);
+  const [generatedImages, setGeneratedImages] = useState<Array<{id:string;imageUrl:string;viewLabel?:string}>>([]);
+  const [genProgress, setGenProgress] = useState<{current:number;total:number}|null>(null);
   const [feedback, setFeedback] = useState("");
+  const [analyzeLoading, setAnalyzeLoading] = useState(false);
+  const [visionFeedback, setVisionFeedback] = useState<any>(null);
+  const [annotatorOpen, setAnnotatorOpen] = useState(false);
+  const [annotatorImage, setAnnotatorImage] = useState("");
+  const [annotatorLoading, setAnnotatorLoading] = useState(false);
+  const [sketchContext, setSketchContext] = useState<{description:string;notes:string}|null>(null);
 
   // Sketch/Upload
   const [mode, setMode] = useState<"text"|"sketch"|"image"|"model">("text");
@@ -127,22 +134,61 @@ function CreatePageInner() {
     }
   }, [questions]);
 
-  // Auto-save session for recovery on refresh (M2: QA persistence)
+  // Hydrate from localStorage on mount (client-only — avoids SSR mismatch)
   useEffect(() => {
+    const saved = loadSession();
+    if (saved) {
+      if (saved.pid) setPid(saved.pid);
+      if (saved.convLang) setConvLang(saved.convLang);
+      if (saved.msgs?.length) setMsgs(saved.msgs);
+      if (saved.spec) setSpec(saved.spec);
+      if (saved.specReady) setSpecReady(saved.specReady);
+    }
+    setHydrated(true);
+  }, []);
+
+  // Auto-save session for recovery on refresh
+  useEffect(() => {
+    if (!hydrated) return; // Don't save before hydration is complete
     saveSession({ pid, convLang, msgs, spec, specReady, result });
-  }, [pid, convLang, msgs, spec, specReady, result]);
+  }, [pid, convLang, msgs, spec, specReady, result, hydrated]);
 
   const updateProgress = (s: DesignSpec) => {
     const cov = getCoverage(s);
     setProgress(Math.round(cov.overall * 100));
   };
 
+  // ══════════════ Reset ══════════════
+
+  const handleReset = () => {
+    localStorage.removeItem(QA_STORAGE_KEY);
+    setInput(""); setLoading(false); setPid(null); setConvLang(null);
+    setMsgs([]); setSpec(EMPTY_SPEC); setSpecReady(false); setShowSpec(false);
+    setProgress(0); setQuestions([]);
+    setAskContext({round:0,askedFields:[],answeredFields:[],skippedFields:[],coverage:null});
+    setCoverage(null); setQaHistory([]); setCustomAnswer("");
+    setError(null); setErrorRetry(null);
+    setResult(null); setCopied(false); setGenLoading(false); setGenProgress(null);
+    setGeneratedImages([]); setFeedback(""); setAnalyzeLoading(false); setVisionFeedback(null);
+  };
+
   // ══════════════ Extract ══════════════
 
   const handleExtract = async () => {
-    const hasFiles = mode==="sketch" ? !!sketchDataUrl : mode==="image" ? uploadedImages.length > 0 : mode==="model" ? uploadedModels.length > 0 : false;
-    if (!input.trim() && !hasFiles) return;
+    const hasFiles = mode==="sketch" ? true : mode==="image" ? uploadedImages.length > 0 : mode==="model" ? uploadedModels.length > 0 : false;
+    const hasContent = mode==="sketch" ? true : (!!input.trim() || hasFiles);
+    if (!hasContent) return;
     setLoading(true); setError(null);
+
+    // Auto-export sketch canvas if not already exported
+    let sketchUrl = sketchDataUrl;
+    if (mode === "sketch" && !sketchUrl) {
+      const canvas = document.querySelector("canvas");
+      if (canvas) {
+        sketchUrl = canvas.toDataURL("image/png");
+        setSketchDataUrl(sketchUrl);
+      }
+    }
     setMsgs(prev=>[...prev,{role:"user",text:input || (cl==="zh"?"開始分析...":"Starting analysis...")}]);
 
     try {
@@ -154,14 +200,139 @@ function CreatePageInner() {
 
       // Build context-aware input text
       let text = input;
-      if (mode==="sketch" && sketchDataUrl) {
-        text = `[Sketch attached + Notes: ${sketchNotes || "none"}]\n${input || "Analyze this sketch"}`;
-      } else if (mode==="sketch") {
-        text = `[Sketch]: ${sketchNotes}\n${input}`;
+      if (mode==="sketch") {
+        // Step 1: Vision model analyzes the sketch
+        let sketchDesc = "";
+        let sketchQuestions: Array<{question:string;options:string[]}> = [];
+        if (sketchUrl) {
+          try {
+            const base64 = sketchUrl.split(",")[1];
+            const visRes = await fetch("/api/prompt/analyze-sketch", {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ imageBase64: base64, notes: sketchNotes }),
+            });
+            const visData = await visRes.json();
+            sketchDesc = visData.description || "";
+            sketchQuestions = visData.questions || [];
+          } catch (e) {
+            console.warn("[Sketch] Vision analysis failed:", String(e).slice(0, 80));
+          }
+        }
+
+        if (!sketchDesc) {
+          sketchDesc = sketchNotes || "Hand-drawn sketch";
+        }
+
+        // Step 2: Show analysis result to user
+        const zh = (convLang || cl) === "zh";
+        setMsgs(prev=>[...prev, {role:"ai",text:zh
+          ? `🔍 我分析了你的草圖：${sketchDesc.slice(0,150)}...`
+          : `🔍 I analyzed your sketch: ${sketchDesc.slice(0,150)}...`}]);
+
+        // Step 3: If vision model has questions, ask them FIRST before extract
+        if (sketchQuestions.length > 0) {
+          const mappedQs = sketchQuestions.map((q, i) => ({
+            field: i === 0 ? "material" : i === 1 ? "dimensions" : i === 2 ? "shape" : "details",
+            question: q.question,
+            options: [...q.options, zh ? "不確定" : "Unsure"],
+            message: zh ? "請確認以下細節：" : "Please confirm these details:",
+          }));
+          setQuestions(mappedQs);
+          setAskContext({round:0, askedFields:[], answeredFields:[], skippedFields:[], coverage:getCoverage(spec)});
+          setMsgs(prev=>[...prev, {role:"ai",text:mappedQs[0].message || (zh?"請確認：":"Confirm:")}]);
+
+          // Store sketch context for later extract after user answers questions
+          setSketchContext({ description: sketchDesc, notes: sketchNotes });
+          setLoading(false);
+          return; // Wait for user to answer before extract
+        }
+
+        // No questions — proceed directly to extract
+        text = `[Sketch analysis: ${sketchDesc}] [User notes: ${sketchNotes || ""}]\n${input || "Generate a 3D-printable object based on this description"}`;
+
       } else if (mode==="image") {
-        text = `[Reference Images: ${uploadedImages.length} uploaded]\n${input || "Analyze these reference images and generate a matching 3D-printable prompt"}`;
+        // ── Image mode: vision-analyze the first reference image ──
+        let imgDesc = "";
+        let imgQuestions: Array<{question:string;options:string[]}> = [];
+        if (uploadedImages.length > 0 && uploadedImages[0]?.previewUrl) {
+          try {
+            // Get base64 from the preview URL by fetching the image
+            const imgUrl = uploadedImages[0].previewUrl;
+            const imgRes = await fetch(imgUrl);
+            const blob = await imgRes.blob();
+            const base64 = await new Promise<string>((resolve) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve((reader.result as string).split(",")[1]);
+              reader.readAsDataURL(blob);
+            });
+            const visRes = await fetch("/api/prompt/analyze-sketch", {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ imageBase64: base64, notes: input }),
+            });
+            const visData = await visRes.json();
+            imgDesc = visData.description || "";
+            imgQuestions = visData.questions || [];
+          } catch (e) {
+            console.warn("[Image] Vision analysis failed:", String(e).slice(0, 80));
+          }
+        }
+
+        if (imgDesc) {
+          const zh = (convLang || cl) === "zh";
+          setMsgs(prev=>[...prev, {role:"ai",text:zh
+            ? `分析了你的參考圖：${imgDesc.slice(0,150)}...`
+            : `Analyzed your reference image: ${imgDesc.slice(0,150)}...`}]);
+
+          if (imgQuestions.length > 0) {
+            const mappedQs = imgQuestions.map((q, i) => ({
+              field: i === 0 ? "material" : i === 1 ? "dimensions" : i === 2 ? "shape" : "details",
+              question: q.question,
+              options: [...q.options, zh ? "不確定" : "Unsure"],
+              message: zh ? "請確認以下細節：" : "Please confirm:",
+            }));
+            setQuestions(mappedQs);
+            setAskContext({round:0, askedFields:[], answeredFields:[], skippedFields:[], coverage:getCoverage(spec)});
+            setMsgs(prev=>[...prev, {role:"ai",text:mappedQs[0].message || (zh?"請確認：":"Confirm:")}]);
+            setSketchContext({ description: imgDesc, notes: input }); // reuse sketchContext for the extract-after-confirm flow
+            setLoading(false);
+            return;
+          }
+          text = `[Reference image analysis: ${imgDesc}]\n${input || "Generate a 3D-printable object matching this reference"}`;
+        } else {
+          text = `[Reference Images: ${uploadedImages.length} uploaded]\n${input || "Analyze these reference images and generate a matching 3D-printable prompt"}`;
+        }
+
       } else if (mode==="model") {
-        text = `[Reference Models: ${uploadedModels.length} uploaded (${uploadedModels.map((m:any)=>m.fileName).join(", ")} )]\n${input || "Analyze this 3D model reference and generate a matching prompt"}`;
+        // ── Model mode: use file metadata to generate targeted questions ──
+        const modelFiles = uploadedModels.map((m: any) => m.fileName || "").filter(Boolean);
+        const modelInfo = modelFiles.length > 0
+          ? `Uploaded 3D models: ${modelFiles.join(", ")}. `
+          : "";
+        const zh = (convLang || cl) === "zh";
+
+        // Generate a few smart questions based on the model files
+        setMsgs(prev=>[...prev, {role:"ai",text:zh
+          ? `收到 ${uploadedModels.length} 個 3D 模型檔案：${modelFiles.join(", ") || "未知"}。請確認以下細節：`
+          : `Received ${uploadedModels.length} 3D model file(s): ${modelFiles.join(", ") || "unknown"}. Please confirm:`}]);
+
+        setQuestions([
+          {
+            field: "dimensions",
+            question: zh ? "這個模型的大約尺寸？(長x寬x高 mm)" : "Approximate dimensions? (LxWxH mm)",
+            options: zh ? ["100x100x100mm", "200x150x100mm", "400x300x200mm", "自訂 LxWxH", "與原檔案相同", "不確定"]
+              : ["100x100x100mm", "200x150x100mm", "400x300x200mm", "Custom LxWxH", "Same as source file", "Unsure"],
+          },
+          {
+            field: "material",
+            question: zh ? "要用什麼材質打印？" : "What material to print with?",
+            options: zh ? ["PLA", "PETG", "ABS", "Resin", "與原模型材質無關", "不確定"]
+              : ["PLA", "PETG", "ABS", "Resin", "Material doesn't matter", "Unsure"],
+          },
+        ]);
+        setAskContext({round:0, askedFields:[], answeredFields:[], skippedFields:[], coverage:getCoverage(spec)});
+        setSketchContext({ description: modelInfo + (input || "3D model reference"), notes: input }); // reuse for extract-after-confirm
+        setLoading(false);
+        return;
       }
 
       const res = await fetch("/api/prompt/extract", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:id,text})});
@@ -194,9 +365,14 @@ function CreatePageInner() {
     setQaHistory(prev=>[...prev,{q:q.question,a:opt,skipped:false}]);
     setMsgs(prev=>[...prev,{role:"user",text:opt}]);
 
-    // Map answer to spec fields. Try to detect multiple fields from free-text
+    // Map answer to spec fields
     const specPath = getSpecPath(q.field);
-    let newSpec = setField(spec, specPath, opt);
+    // If field is "components" or "details" and there's already content, append instead of overwrite
+    let answerValue = opt;
+    if ((q.field === "details" || q.field === "components") && spec.structure.details) {
+      answerValue = spec.structure.details + "; " + opt;
+    }
+    let newSpec = setField(spec, specPath, answerValue);
 
     // Smart parse: if answer looks like multi-field input, try to fill other fields too
     if (opt.includes(" ") || opt.match(/\d+x\d+/i)) {
@@ -224,12 +400,107 @@ function CreatePageInner() {
       const freshCoverage = getCoverage(newSpec);
       const newCtx: AskContext = {...askContext, answeredFields:newAnswered, askedFields:newAsked, coverage: freshCoverage};
       const coveredEnough = freshCoverage.shouldTerminate;
-      const maxedOut = newCtx.round >= TERMINATION.MAX_ROUNDS;
+      const maxedOut = newCtx.round >= getMaxRounds(spec.meta?.assetType || "unknown");
+
+      // If we're in the sketch pre-extract phase, trigger extract now
+      if (remaining.length === 0 && sketchContext) {
+        setQuestions([]);
+        setSketchContext(null);
+
+        // Build a pre-filled spec from sketch confirmation answers
+        const answerParts: string[] = [];
+        let preFilledSpec = { ...spec };
+        const fieldMap = ["material", "dimensions", "shape", "details"];
+        qaHistory.slice(-4).forEach((h, i) => {
+          if (h.a && h.a !== "不確定" && h.a !== "Unsure" && !h.skipped) {
+            answerParts.push(h.a);
+            const field = fieldMap[i] || "details";
+            const specPath = getSpecPath(field);
+            preFilledSpec = setField(preFilledSpec, specPath, h.a);
+          }
+        });
+        setSpec(preFilledSpec);
+        updateProgress(preFilledSpec);
+
+        // Build enriched text with all context
+        const enrichedText = `[Sketch analysis: ${sketchContext.description}] [User confirmed: ${answerParts.join(", ")}] [Notes: ${sketchContext.notes || ""}]\nGenerate a 3D-printable object based on this.`;
+        setLoading(true);
+        setMsgs(prev=>[...prev,{role:"ai",text:cl==="zh"?"正在根據你的確認生成規格...":"Generating spec based on your confirmations..."}]);
+        try {
+          const res = await fetch("/api/prompt/extract", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:pid,text:enrichedText})});
+          const data = await res.json();
+          if (data.spec) {
+            // Merge extract result with pre-filled answers (pre-filled takes priority)
+            const mergedSpec = { ...data.spec };
+            if (preFilledSpec.visual?.material) mergedSpec.visual = { ...mergedSpec.visual, material: preFilledSpec.visual.material };
+            if (preFilledSpec.dimensions?.approximateSize) mergedSpec.dimensions = { ...mergedSpec.dimensions, approximateSize: preFilledSpec.dimensions.approximateSize };
+            if (preFilledSpec.structure?.mainShape) mergedSpec.structure = { ...mergedSpec.structure, mainShape: preFilledSpec.structure.mainShape };
+            if (preFilledSpec.structure?.details && preFilledSpec.structure.details !== mergedSpec.structure?.details) {
+              mergedSpec.structure = { ...mergedSpec.structure, details: (mergedSpec.structure?.details || "") + "; " + preFilledSpec.structure.details };
+            }
+            setSpec(mergedSpec); setSpecReady(true);
+            setMsgs(prev=>[...prev,{role:"ai",text:data.message}]);
+            updateProgress(mergedSpec);
+            // Continue with normal Q&A — skip fields already answered
+            const answeredFields = fieldMap.filter(f => {
+              const p = getSpecPath(f);
+              return getField(preFilledSpec, p) && getField(preFilledSpec, p) !== "";
+            });
+            const askLang = data.lang || convLang || "en";
+            const ctx: AskContext = {round:0,askedFields:[...answeredFields],answeredFields:[...answeredFields],skippedFields:[],coverage:null};
+            const aRes = await fetch("/api/prompt/ask", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({spec:mergedSpec,lang:askLang,context:ctx})});
+            const aData = await aRes.json();
+            const qs = aData.questions || [];
+            setQuestions(qs);
+            setAskContext(aData.context || {...ctx,round:1});
+            setCoverage(aData.context?.coverage || null);
+            if (qs.length > 0) setMsgs(prev=>[...prev,{role:"ai",text:qs[0].message || (askLang==="zh"?"請選擇：":"Choose:")}]);
+          }
+        } catch (err: any) { setError(`Extract: ${err.message||String(err)}`); }
+        finally { setLoading(false); }
+        return;
+      }
 
       if (maxedOut || (remaining.length === 0 && coveredEnough)) {
         setQuestions([]);
         setAskContext(newCtx);
-        setShowSpec(true); // Auto-expand spec for review
+        setShowSpec(true);
+
+        // If material is missing, ask AI to recommend
+        const materialMissing = !spec.visual.material || spec.visual.material === "不確定" || spec.visual.material === "Unsure";
+        if (materialMissing) {
+          setLoading(true);
+          try {
+            const recRes = await fetch("/api/prompt/recommend-material", {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ spec: newSpec, lang: cl }),
+            });
+            const recData = await recRes.json();
+            if (recData.material) {
+              const updatedSpec = setField(newSpec, "visual.material", recData.material);
+              setSpec(updatedSpec);
+              updateProgress(updatedSpec);
+              setQuestions([{
+                field: "material",
+                question: cl === "zh"
+                  ? `AI 分析完成。根據你之前提供的所有資訊，最適合的材質是：${recData.material}`
+                  : `Analysis complete. Based on everything you told me, the best material is: ${recData.material}`,
+                options: [
+                  `${recData.material} (${cl === "zh" ? "接受" : "Accept"})`,
+                  ...(recData.alternatives || []).map((a: string) => a),
+                  cl === "zh" ? "不確定" : "Unsure",
+                ],
+              }]);
+              setMsgs(prev=>[...prev, {role:"ai",text:cl==="zh"
+                ? `我分析了你的需求：\n\n**推薦：${recData.material}**\n理由：${recData.reason}\n${recData.alternatives?.length ? `備選：${recData.alternatives.join("、")}` : ""}`
+                : `Based on your requirements:\n\n**Recommended: ${recData.material}**\nReason: ${recData.reason}\n${recData.alternatives?.length ? `Alternatives: ${recData.alternatives.join(", ")}` : ""}`}]);
+              setLoading(false);
+              return;
+            }
+          } catch { /* continue to normal done */ }
+          finally { setLoading(false); }
+        }
+
         const msg = maxedOut
           ? (cl==="zh" ? `已達最大輪數。請檢查下方資訊後生成提示詞。` : `Max rounds reached. Review and generate.`)
           : (cl==="zh" ? `✅ 資訊收集完成！請檢查並編輯下方規格，確認無誤後生成提示詞。` : `✅ Done! Review the spec below, then generate.`);
@@ -291,6 +562,19 @@ function CreatePageInner() {
     // Show streaming preview immediately
     setResult({ id: "", craftedPrompt: "", negativePrompt: "" });
 
+    // Debug: verify dimensions are in the spec before sending
+    console.log("[Craft] Sending spec:", JSON.stringify({
+      name: spec.subject?.name,
+      material: spec.visual?.material,
+      color: spec.visual?.color,
+      shape: spec.structure?.mainShape,
+      dims: spec.dimensions?.approximateSize,
+      edge: spec.visual?.edgeTreatment,
+      surf: [spec.visual?.texture, spec.visual?.finish].filter(Boolean).join(" "),
+      comp: spec.structure?.details,
+      style: spec.meta?.style,
+    }));
+
     try {
       const res = await fetch("/api/prompt/craft/stream", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ spec, projectId: pid }) });
       if (!res.ok) throw new Error(`Stream ${res.status}`);
@@ -328,27 +612,176 @@ function CreatePageInner() {
   const handleIterate = async () => {
     if (!feedback.trim()||!pid) return;
     setLoading(true); setError(null);
+    // Use streaming craft for real-time feedback
+    setResult({ id: "", craftedPrompt: "", negativePrompt: "" });
     try {
-      const res = await fetch("/api/prompt/craft", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:pid,spec,feedback})});
-      const data = await res.json();
-      setResult(data.promptVersion);
+      const res = await fetch("/api/prompt/craft/stream", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ spec, projectId: pid }) });
+      if (!res.ok) throw new Error(`Stream ${res.status}`);
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error("No stream");
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n\n");
+        buffer = lines.pop() || "";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const data = JSON.parse(line.slice(6));
+            if (data.done) {
+              setResult({ id: data.id || "", craftedPrompt: data.positive, negativePrompt: data.negative || "" });
+            } else if (data.token) {
+              setResult(prev => prev ? { ...prev, craftedPrompt: data.full } : { id: "", craftedPrompt: data.full, negativePrompt: "" });
+            }
+          } catch { /* skip */ }
+        }
+      }
       setFeedback("");
+      setMsgs(prev=>[...prev,{role:"ai",text:cl==="zh"?"✨ 已根據意見更新提示詞":"✨ Prompt updated based on your feedback"}]);
     } catch (err: any) { setError(`Iterate: ${err.message||String(err)}`); setErrorRetry(()=>handleIterate); }
     finally { setLoading(false); }
   };
 
-  const handleGenImages = async (multiView = false) => {
-    if (!pid||!result||!result.id) return;
-    setGenLoading(true); setError(null);
+  // ── Vision Analysis ──
+  const handleAnalyze = async () => {
+    if (!result?.craftedPrompt || generatedImages.length === 0) return;
+    setAnalyzeLoading(true); setVisionFeedback(null);
     try {
-      const res = await fetch("/api/hunyuan/text-to-image", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:pid,promptVersionId:result.id,prompt:result.craftedPrompt,negativePrompt:result.negativePrompt,numImages:1,multiView})});
+      const res = await fetch("/api/prompt/feedback", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          imagePath: generatedImages[0].imageUrl,
+          positivePrompt: result.craftedPrompt,
+          negativePrompt: result.negativePrompt,
+        }),
+      });
+      const data = await res.json();
+      if (data.feedback) {
+        setVisionFeedback(data.feedback);
+        setMsgs(prev=>[...prev,{role:"ai",text:cl==="zh"
+          ? `🔍 AI 分析完成：${data.feedback.summary}`
+          : `🔍 Analysis complete: ${data.feedback.summary}`}]);
+      } else {
+        setMsgs(prev=>[...prev,{role:"ai",text:cl==="zh"
+          ? `⚠️ Vision 模型未啟用。設定 VISION_ENABLED=true 並安裝 llava 或 qwen2.5-vl`
+          : `⚠️ Vision model not available. Set VISION_ENABLED=true and install a vision model.`}]);
+      }
+    } catch (err: any) { setError(`Analyze: ${err.message||String(err)}`); }
+    finally { setAnalyzeLoading(false); }
+  };
+
+  // ── Apply vision feedback & regenerate ──
+  const handleApplyAndRegen = async () => {
+    if (!visionFeedback?.promptImprovements?.length || !result?.craftedPrompt) return;
+    const improvedPrompt = applyPromptImprovements(result.craftedPrompt, visionFeedback.promptImprovements);
+    if (!improvedPrompt || improvedPrompt === result.craftedPrompt) return;
+
+    // Ensure we have a valid promptVersionId — save to DB if needed
+    let versionId = result.id;
+    if (!versionId && pid) {
+      try {
+        const saveRes = await fetch("/api/prompt/craft", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:pid,spec})});
+        const saveData = await saveRes.json();
+        versionId = saveData.promptVersion?.id || "";
+      } catch { /* proceed without id — API will error if required */ }
+    }
+    if (!versionId) { setError("Cannot regenerate: no saved prompt version. Please generate the prompt again."); return; }
+
+    // Update result with improved prompt
+    const newResult = { ...result, craftedPrompt: improvedPrompt, id: versionId };
+    setResult(newResult);
+    setVisionFeedback(null);
+    setFeedback("");
+
+    setMsgs(prev=>[...prev,{role:"ai",text:cl==="zh"
+      ? `🔧 已套用 ${visionFeedback.promptImprovements.length} 個改進，重新生成中...`
+      : `🔧 Applied ${visionFeedback.promptImprovements.length} improvements, regenerating...`}]);
+
+    setGenLoading(true); setError(null); setGeneratedImages([]);
+    try {
+      const res = await fetch("/api/hunyuan/text-to-image", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:pid,promptVersionId:versionId,prompt:improvedPrompt,negativePrompt:result.negativePrompt,numImages:1,multiView:false})});
       if (!res.ok) throw new Error(`T2I ${res.status}: ${(await res.json()).error || "Unknown"}`);
-      // Stay on page — user can iterate or view images on project page
+      const data = await res.json();
+      setGeneratedImages(data.images || []);
       setMsgs(prev=>[...prev,{role:"ai",text:cl==="zh"
-        ? `✅ 圖片已生成！可繼續修改 prompt，或前往專案頁面查看。`
-        : `✅ Images generated! Refine the prompt below, or view on the project page.`}]);
-    } catch (err: any) { setError(`Gen Images: ${err.message||String(err)}`); setErrorRetry(()=>handleGenImages); }
+        ? `✅ 已用改善後的提示詞重新生成！`
+        : `✅ Regenerated with improved prompt!`}]);
+    } catch (err: any) { setError(`Regen: ${err.message||String(err)}`); }
     finally { setGenLoading(false); }
+  };
+
+  // ── Image Annotation → Analyze → Regenerate ──
+  const handleAnnotationAnalyze = async (originalBase64: string, annotatedBase64: string) => {
+    if (!result?.craftedPrompt) return;
+    setAnnotatorLoading(true); setAnnotatorOpen(false);
+    setMsgs(prev=>[...prev,{role:"ai",text:cl==="zh"?"🔍 正在分析你畫的標記...":"🔍 Analyzing your drawing..."}]);
+
+    try {
+      const annBase64 = annotatedBase64.split(",")[1] || annotatedBase64;
+      const origBase64 = originalBase64.split(",")[1] || originalBase64;
+      const res = await fetch("/api/prompt/analyze-annotation", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ originalBase64: origBase64, annotatedBase64: annBase64, positivePrompt: result.craftedPrompt, negativePrompt: result.negativePrompt }),
+      });
+      const data = await res.json();
+
+      if (data.improvedPositive && data.improvedPositive !== result.craftedPrompt) {
+        setResult(prev => prev ? { ...prev, craftedPrompt: data.improvedPositive, negativePrompt: data.improvedNegative || prev.negativePrompt } : null);
+        setMsgs(prev=>[...prev,{role:"ai",text:cl==="zh"
+          ? `✏️ 已根據你的標記更新提示詞：${(data.changes||[]).join("; ") || "已套用變更"}`
+          : `✏️ Updated prompt based on your annotations: ${(data.changes||[]).join("; ") || "changes applied"}`}]);
+
+        // Auto-regenerate if we have a valid id
+        if (result.id && pid) {
+          setGenLoading(true); setGeneratedImages([]);
+          try {
+            const genRes = await fetch("/api/hunyuan/text-to-image", {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ projectId: pid, promptVersionId: result.id, prompt: data.improvedPositive, negativePrompt: data.improvedNegative || result.negativePrompt, numImages: 1 }),
+            });
+            if (genRes.ok) {
+              const genData = await genRes.json();
+              setGeneratedImages(genData.images || []);
+              setMsgs(prev=>[...prev,{role:"ai",text:cl==="zh"?"✅ 已重新生成！":"✅ Regenerated!"}]);
+            }
+          } catch { /* generation failed, prompt still updated */ }
+          finally { setGenLoading(false); }
+        }
+      } else {
+        setMsgs(prev=>[...prev,{role:"ai",text:cl==="zh"?"⚠️ 無法從標記中識別明確的修改":"⚠️ Could not identify clear changes from annotations"}]);
+      }
+    } catch (err: any) { setError(`Annotation: ${err.message||String(err)}`); }
+    finally { setAnnotatorLoading(false); }
+  };
+
+  const handleGenImages = async (count = 4) => {
+    if (!pid||!result||!result.craftedPrompt) return;
+    if (!result.id) { setError("Prompt not saved yet — please regenerate the prompt first"); return; }
+    setGenLoading(true); setError(null); setGeneratedImages([]); setVisionFeedback(null);
+    setGenProgress({current:0,total:count});
+
+    // Simulated progress tick while waiting for API
+    const progressTimer = setInterval(() => {
+      setGenProgress(prev => {
+        if (!prev || prev.current >= prev.total - 1) return prev;
+        return { ...prev, current: prev.current + 1 };
+      });
+    }, 8000); // tick every ~8s (roughly matches per-image generation time)
+
+    try {
+      const res = await fetch("/api/hunyuan/text-to-image", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:pid,promptVersionId:result.id,prompt:result.craftedPrompt,negativePrompt:result.negativePrompt,numImages:count})});
+      if (!res.ok) throw new Error(`T2I ${res.status}: ${(await res.json()).error || "Unknown"}`);
+      const data = await res.json();
+      setGenProgress({current:count,total:count}); // complete
+      setGeneratedImages(data.images || []);
+      setMsgs(prev=>[...prev,{role:"ai",text:cl==="zh"
+        ? `✅ ${data.images?.length||0} 張圖片已生成！選一張最喜歡的，或用畫筆標記修改。`
+        : `✅ ${data.images?.length||0} images generated! Pick your favorite, or draw to edit.`}]);
+    } catch (err: any) { setError(`Gen Images: ${err.message||String(err)}`); setErrorRetry(()=>handleGenImages); }
+    finally { clearInterval(progressTimer); setGenLoading(false); setTimeout(()=>setGenProgress(null),1000); }
   };
 
   const MODES = [
@@ -364,6 +797,9 @@ function CreatePageInner() {
       <header className="bg-white/80 backdrop-blur-sm border-b border-amber-100 sticky top-0 z-10 shadow-sm">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-4">
           <Button variant="ghost" size="sm" onClick={()=>router.push("/")} className="text-gray-500 hover:text-amber-700">← {t("Back","返回")}</Button>
+          <Button variant="ghost" size="sm" onClick={handleReset} className="text-gray-400 hover:text-amber-600">
+            <Plus className="w-4 h-4 mr-1"/>{t("New","新專案")}
+          </Button>
           <h1 className="text-lg font-semibold bg-gradient-to-r from-amber-600 to-rose-500 bg-clip-text text-transparent">
             {t("AI Design Studio","AI 設計工作室")}
           </h1>
@@ -398,7 +834,7 @@ function CreatePageInner() {
                 {spec.subject.name||"..."}
               </span>
               <span className="text-xs text-gray-400 bg-gray-100 rounded-full px-3 py-1">
-                {t("Round","輪")} {askContext.round}/{TERMINATION.MAX_ROUNDS} · {Math.round(coverage.overall*100)}%
+                {t("Round","輪")} {askContext.round}/{getMaxRounds(spec.meta?.assetType||"unknown")} · {Math.round(coverage.overall*100)}%
               </span>
             </div>
             {Object.entries(coverage.byCategory).map(([cat, data]) => (
@@ -425,7 +861,7 @@ function CreatePageInner() {
           <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 shadow-sm border border-amber-100 space-y-2">
             <div className="flex items-center justify-between text-sm">
               <span className="font-semibold text-gray-800">{spec.subject.name||"..."}</span>
-              <span className="text-xs text-gray-400">{progress}% · {t("Round","輪")} {askContext.round}/{TERMINATION.MAX_ROUNDS}</span>
+              <span className="text-xs text-gray-400">{progress}% · {t("Round","輪")} {askContext.round}/{getMaxRounds(spec.meta?.assetType||"unknown")}</span>
             </div>
             <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
               <div className="bg-gradient-to-r from-amber-400 to-rose-500 h-2 rounded-full transition-all duration-700" style={{width:`${progress}%`}}/>
@@ -506,57 +942,125 @@ function CreatePageInner() {
                 </div>
               )}
 
-              {/* Question card — soft glow */}
+              {/* Question cards — batch mode (multiple questions per round) */}
               {questions.length > 0 && !loading && !result && (
-                <div ref={questionRef} className="space-y-4 bg-gradient-to-br from-amber-50/90 via-white to-rose-50/90 backdrop-blur-sm rounded-2xl p-5 border border-amber-200 shadow-lg shadow-amber-100/50">
-                  <div className="flex items-start gap-3">
-                    <div className="shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-rose-500 flex items-center justify-center shadow-sm">
-                      <Sparkles className="w-4 h-4 text-white"/>
+                <div ref={questionRef} className="space-y-4">
+                  {questions.map((q, qi) => (
+                    <div key={`${q.field}-${qi}`} className="bg-gradient-to-br from-amber-50/90 via-white to-rose-50/90 backdrop-blur-sm rounded-2xl p-5 border border-amber-200 shadow-lg shadow-amber-100/50 space-y-4">
+                      <div className="flex items-start gap-3">
+                        <div className="shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-rose-500 flex items-center justify-center shadow-sm">
+                          <span className="text-white text-xs font-bold">{qi+1}</span>
+                        </div>
+                        <p className="text-base font-semibold text-gray-800 pt-1">{q.question}</p>
+                      </div>
+
+                      {/* Text input */}
+                      <div className="flex gap-2">
+                        <Input value={customAnswer} onChange={e=>setCustomAnswer(e.target.value)}
+                          placeholder={q.options.filter(o=>!o.includes("跳過")&&!o.includes("skip")).length===0
+                            ? (cl==="zh"?"請直接輸入...":"Type your answer...")
+                            : (cl==="zh"?"或自行輸入...":"Or type your own...")}
+                          className="h-10 text-sm flex-1 rounded-xl border-amber-200 focus:border-amber-400 focus:ring-amber-400"
+                          autoFocus={qi===0 && q.options.filter(o=>!o.includes("跳過")&&!o.includes("skip")).length===0}
+                          onKeyDown={e=>{if(e.key==="Enter"&&customAnswer.trim()){e.preventDefault();handleAnswer(q,customAnswer.trim());}}}/>
+                        {customAnswer.trim() && (
+                          <Button size="sm" onClick={()=>handleAnswer(q,customAnswer.trim())} className="rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-500 hover:to-amber-600 shadow-sm">
+                            <ArrowRight className="w-4 h-4"/>
+                          </Button>
+                        )}
+                      </div>
+
+                      {/* Option buttons */}
+                      {q.options.filter(o=>!o.includes("跳過")&&!o.includes("skip")).length>0 && (
+                        <div className="grid grid-cols-1 gap-1.5">
+                          {q.options.filter(o=>!o.includes("跳過")&&!o.includes("skip")).map((opt,idx)=>(
+                            <button key={idx} onClick={()=>handleAnswer(q,opt)}
+                              className="group w-full text-left px-3 py-2.5 rounded-xl border-2 border-amber-100 bg-white hover:border-amber-400 hover:bg-gradient-to-r hover:from-amber-50 hover:to-rose-50 hover:shadow-md transition-all duration-200 flex items-center gap-2">
+                              <span className="shrink-0 w-6 h-6 rounded-lg bg-gradient-to-br from-amber-400 to-amber-500 text-white text-[10px] font-bold flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm">
+                                {idx+1}
+                              </span>
+                              <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900 flex-1">{opt}</span>
+                              <ArrowRight className="w-3.5 h-3.5 text-amber-300 opacity-0 group-hover:opacity-100 transition-opacity"/>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Skip */}
+                      <button onClick={()=>handleSkip(q)}
+                        className="w-full text-center text-xs py-2 rounded-xl border border-dashed border-amber-200 text-amber-400 hover:border-amber-400 hover:text-amber-600 hover:bg-amber-50/50 transition-colors">
+                        {cl==="zh"?"⏭️ 不確定，跳過":"⏭️ Unsure, skip"}
+                      </button>
+
+                      {/* Material guide */}
+                      {q.field === "material" && (
+                        <div className="space-y-2 pt-2 border-t border-amber-100">
+                          <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">{t("Material Guide","材質指南")}</p>
+                          {MATERIAL_GUIDE.slice(0, 6).map(m => {
+                            const isZh = cl === "zh";
+                            const heatLabels = ["<60C", "~80C", "~100C", "~120C", ">150C"];
+                            const strengthLabels = [t("Very Low","極低"), t("Low","低"), t("Medium","中"), t("High","高"), t("Very High","極高")];
+                            const diffLabels = [t("Easiest","最易"), t("Easy","易"), t("Moderate","中等"), t("Hard","難"), t("Expert","專家")];
+                            const safetyLabels: Record<string, string> = {
+                              "food-safe": t("Food-safe","食品級"),
+                              "low-odor": t("Low odor","低氣味"),
+                              "ventilation": t("Needs ventilation","需通風"),
+                              "toxic-resin": t("Toxic - wear PPE","有毒 - 需防護"),
+                              "abrasive": t("Wears nozzle","磨損噴嘴"),
+                            };
+                            return (
+                              <button key={m.name}
+                                onClick={() => handleAnswer(q, m.name)}
+                                className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-amber-50 transition-colors border border-amber-100 hover:border-amber-300 bg-white group">
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="text-xs font-semibold text-gray-800 group-hover:text-amber-700">
+                                    {isZh ? m.label.zh : m.label.en}
+                                  </span>
+                                </div>
+                                <p className="text-[10px] text-gray-500 leading-relaxed line-clamp-2">
+                                  {isZh ? m.bestFor.zh : m.bestFor.en}
+                                </p>
+                                <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-[9px] text-gray-400">
+                                  <span>{t("Strength","強度")}: {strengthLabels[m.strength-1]}</span>
+                                  <span>{t("Flex","彈性")}: {m.flexibility >= 4 ? t("Flexible","彈性") : m.flexibility >= 3 ? t("Slight Flex","微彈") : t("Rigid","剛性")}</span>
+                                  <span>{t("Heat","耐熱")}: {heatLabels[m.heatResistance-1]}</span>
+                                  <span>{t("Difficulty","難度")}: {diffLabels[m.printDifficulty-1]}</span>
+                                  <span>{safetyLabels[m.safety] || m.safety}</span>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
-                    <p className="text-base font-semibold text-gray-800 pt-1">{questions[0].question}</p>
-                  </div>
-
-                  {/* Text input */}
-                  <div className="flex gap-2">
-                    <Input value={customAnswer} onChange={e=>setCustomAnswer(e.target.value)}
-                      placeholder={questions[0].options.filter(o=>!o.includes("跳過")&&!o.includes("skip")).length===0
-                        ? (cl==="zh"?"請直接輸入...":"Type your answer...")
-                        : (cl==="zh"?"或自行輸入...":"Or type your own...")}
-                      className="h-11 text-sm flex-1 rounded-xl border-amber-200 focus:border-amber-400 focus:ring-amber-400"
-                      autoFocus={questions[0].options.filter(o=>!o.includes("跳過")&&!o.includes("skip")).length===0}
-                      onKeyDown={e=>{if(e.key==="Enter"&&customAnswer.trim()){e.preventDefault();handleAnswer(questions[0],customAnswer.trim());}}}/>
-                    {customAnswer.trim() && (
-                      <Button size="sm" onClick={()=>handleAnswer(questions[0],customAnswer.trim())} className="rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-500 hover:to-amber-600 shadow-sm">
-                        <ArrowRight className="w-4 h-4"/>
-                      </Button>
-                    )}
-                  </div>
-
-                  {/* Option buttons — card style */}
-                  {questions[0].options.filter(o=>!o.includes("跳過")&&!o.includes("skip")).length>0 && (
-                    <div className="grid grid-cols-1 gap-2">
-                      {questions[0].options.filter(o=>!o.includes("跳過")&&!o.includes("skip")).map((opt,idx)=>(
-                        <button key={idx} onClick={()=>handleAnswer(questions[0],opt)}
-                          className="group w-full text-left px-4 py-3 rounded-2xl border-2 border-amber-100 bg-white hover:border-amber-400 hover:bg-gradient-to-r hover:from-amber-50 hover:to-rose-50 hover:shadow-lg transition-all duration-200 flex items-center gap-3">
-                          <span className="shrink-0 w-8 h-8 rounded-xl bg-gradient-to-br from-amber-400 to-amber-500 text-white text-xs font-bold flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm">
-                            {idx+1}
-                          </span>
-                          <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">{opt}</span>
-                          <ArrowRight className="w-4 h-4 text-amber-300 ml-auto opacity-0 group-hover:opacity-100 transition-opacity"/>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Skip button */}
-                  <button onClick={()=>handleSkip(questions[0])}
-                    className="w-full text-center text-xs py-2.5 rounded-xl border-2 border-dashed border-amber-200 text-amber-400 hover:border-amber-400 hover:text-amber-600 hover:bg-amber-50/50 transition-colors">
-                    {cl==="zh"?"⏭️ 不確定，跳過":"⏭️ Unsure, skip"}
-                  </button>
+                  ))}
                 </div>
               )}
 
-              {loading && (
+              {/* Generation progress */}
+              {genProgress && (
+                <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 border border-amber-200 shadow-lg shadow-amber-100/50 space-y-3 animate-in fade-in">
+                  <div className="flex items-center gap-3">
+                    <div className="shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-rose-500 flex items-center justify-center shadow-sm">
+                      <Loader2 className="w-4 h-4 text-white animate-spin"/>
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-gray-800">
+                        {t("Generating Images","正在生成圖片")}
+                      </p>
+                      <p className="text-xs text-gray-400">
+                        {genProgress.current}/{genProgress.total} · ~{genProgress.total * 50}s
+                      </p>
+                    </div>
+                  </div>
+                  <div className="w-full bg-amber-100 rounded-full h-2.5 overflow-hidden">
+                    <div className="bg-gradient-to-r from-amber-400 to-rose-500 h-2.5 rounded-full transition-all duration-1000 ease-out"
+                      style={{width:`${Math.max(5,(genProgress.current/genProgress.total)*100)}%`}}/>
+                  </div>
+                </div>
+              )}
+
+              {loading && !genProgress && (
                 <div className="flex items-center gap-3 text-sm text-amber-600 bg-white/80 backdrop-blur-sm rounded-2xl px-4 py-3 border border-amber-100">
                   <Loader2 className="w-4 h-4 animate-spin"/>
                   <span>{t("Thinking...","AI 思考中...")}</span>
@@ -577,7 +1081,7 @@ function CreatePageInner() {
                         : (cl==="zh" ? "描述您想創建的物品，例如：白色醫療櫃，木材，直立矩形盒狀，200mm..." : "Describe what you want to create, e.g. a white medical cabinet, wood, vertical box shape...")}
                       rows={3} className="resize-none text-sm rounded-2xl border-amber-200 focus:border-amber-400"/>
                   )}
-                  <Button onClick={handleExtract} disabled={loading||(!input.trim()&&!(sketchDataUrl||uploadedImages.length>0||uploadedModels.length>0))}
+                  <Button onClick={handleExtract} disabled={loading||(mode==="text"&&!input.trim()&&!(uploadedImages.length>0||uploadedModels.length>0))||(mode==="image"&&uploadedImages.length===0&&!input.trim())||(mode==="model"&&uploadedModels.length===0&&!input.trim())}
                     className="w-full h-12 rounded-2xl bg-gradient-to-r from-amber-500 to-rose-500 hover:from-amber-600 hover:to-rose-600 shadow-lg shadow-amber-200 text-white font-semibold text-base transition-all duration-300 hover:shadow-xl hover:shadow-amber-300 hover:-translate-y-0.5">
                     {loading
                       ? <><Loader2 className="w-5 h-5 animate-spin mr-2"/> {t("Analyzing...","分析中...")}</>
@@ -597,13 +1101,13 @@ function CreatePageInner() {
                       {loading?<Loader2 className="w-3.5 h-3.5 animate-spin"/>:<RefreshCw className="w-3.5 h-3.5"/>}
                     </Button>
                   </div>
-                  <Button onClick={()=>handleGenImages(false)} disabled={genLoading||!result.craftedPrompt} variant="outline"
+                  <Button onClick={()=>handleGenImages(1)} disabled={genLoading||!result.craftedPrompt||!result.id} variant="outline"
                     className="rounded-xl border-gray-200 text-gray-600 hover:border-amber-300 hover:text-amber-700 shrink-0">
-                    {genLoading?<Loader2 className="w-4 h-4 animate-spin mr-1"/>:<ArrowRight className="w-4 h-4 mr-1"/>}1 View
+                    {genLoading?<Loader2 className="w-4 h-4 animate-spin mr-1"/>:<ArrowRight className="w-4 h-4 mr-1"/>}1 Pic
                   </Button>
-                  <Button onClick={()=>handleGenImages(true)} disabled={genLoading||!result.craftedPrompt}
+                  <Button onClick={()=>handleGenImages(4)} disabled={genLoading||!result.craftedPrompt||!result.id}
                     className="rounded-xl bg-gradient-to-r from-amber-500 to-rose-500 hover:from-amber-600 hover:to-rose-600 text-white shadow-md shrink-0">
-                    {genLoading?<Loader2 className="w-4 h-4 animate-spin mr-1"/>:<Box className="w-4 h-4 mr-1"/>}4 Views
+                    {genLoading?<Loader2 className="w-4 h-4 animate-spin mr-1"/>:<Box className="w-4 h-4 mr-1"/>}4 Pics
                   </Button>
                 </div>
               ) : (
@@ -673,6 +1177,95 @@ function CreatePageInner() {
                       {copied?<><Check className="w-3.5 h-3.5 text-emerald-500"/> {t("Copied","已複製")}</>:<><Copy className="w-3.5 h-3.5"/> {t("Copy","複製")}</>}
                     </Button>
                   </div>
+
+                  {/* Generated image previews */}
+                  {generatedImages.length > 0 && (
+                    <div className="space-y-2">
+                      <h4 className="text-xs font-semibold text-gray-500 flex items-center gap-1.5">
+                        <ImagePlus className="w-3.5 h-3.5"/>
+                        {t("Generated Images","生成圖片")} ({generatedImages.length})
+                      </h4>
+                      <div className="grid grid-cols-2 gap-2">
+                        {generatedImages.map((img, i) => (
+                          <div key={img.id} className="relative group rounded-xl overflow-hidden border border-amber-100 bg-amber-50 aspect-square">
+                            <img src={img.imageUrl} alt={img.viewLabel || `Image ${i+1}`}
+                              className="w-full h-full object-cover"
+                              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}/>
+                            <button
+                              onClick={() => { setAnnotatorImage(img.imageUrl); setAnnotatorOpen(true); }}
+                              className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                              <span className="bg-white/90 text-gray-700 text-[10px] px-2 py-1 rounded-full font-medium">
+                                <Pencil className="w-3 h-3 inline mr-1"/>{t("Draw to edit","畫畫修改")}
+                              </span>
+                            </button>
+                            {img.viewLabel && (
+                              <span className="absolute bottom-0 left-0 right-0 text-[10px] text-center bg-black/50 text-white py-0.5">
+                                {img.viewLabel}
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Vision analysis button + results */}
+                  {generatedImages.length > 0 && (
+                    <div className="space-y-2">
+                      <Button variant="outline" size="sm" onClick={handleAnalyze} disabled={analyzeLoading}
+                        className="w-full rounded-xl border-amber-300 text-amber-700 hover:bg-amber-50 text-xs">
+                        {analyzeLoading
+                          ? <><Loader2 className="w-3.5 h-3.5 animate-spin mr-1"/> {t("Analyzing...","分析中...")}</>
+                          : <><Lightbulb className="w-3.5 h-3.5 mr-1"/> {t("AI Analyze Image","🔍 AI 分析圖片")}</>
+                        }
+                      </Button>
+                      {visionFeedback && (
+                        <div className="bg-amber-50/80 rounded-2xl p-3 border border-amber-200 space-y-2 text-xs">
+                          <div className="flex items-center gap-2">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                              visionFeedback.quality==="good" ? "bg-emerald-100 text-emerald-700" :
+                              visionFeedback.quality==="acceptable" ? "bg-amber-100 text-amber-700" :
+                              "bg-red-100 text-red-700"
+                            }`}>
+                              {visionFeedback.quality?.toUpperCase()}
+                            </span>
+                            <span className="text-gray-500">{visionFeedback.summary}</span>
+                          </div>
+                          {visionFeedback.issues?.length > 0 && (
+                            <div className="space-y-1">
+                              {visionFeedback.issues.map((iss:any,i:number)=>(
+                                <div key={i} className="flex items-start gap-1.5">
+                                  <span className={`shrink-0 w-1.5 h-1.5 rounded-full mt-1.5 ${
+                                    iss.severity==="critical"?"bg-red-500":iss.severity==="major"?"bg-amber-500":"bg-gray-400"
+                                  }`}/>
+                                  <span className="text-gray-600">{iss.description}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {visionFeedback.promptImprovements?.length > 0 && (
+                            <div className="space-y-2">
+                              <span className="font-medium text-emerald-700">{t("Suggested Fixes","建議修正")}:</span>
+                              {visionFeedback.promptImprovements.map((imp:string,i:number)=>(
+                                <button key={i} onClick={()=>setFeedback(prev=>prev?prev+"; "+imp:imp)}
+                                  className="block w-full text-left text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 rounded-lg px-2 py-1 transition-colors">
+                                  + {imp}
+                                </button>
+                              ))}
+                              <Button size="sm" onClick={handleApplyAndRegen} disabled={genLoading}
+                                className="w-full rounded-xl bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white text-xs shadow-sm">
+                                {genLoading
+                                  ? <><Loader2 className="w-3.5 h-3.5 animate-spin mr-1"/> {t("Regenerating...","重新生成中...")}</>
+                                  : <><Wand2 className="w-3.5 h-3.5 mr-1"/> {t("Apply All & Regenerate","✨ 一鍵套用並重新生成")}</>
+                                }
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   <div className="space-y-3">
                     <div>
                       <h4 className="text-xs font-semibold text-emerald-600 mb-2 flex items-center gap-1.5">
@@ -703,6 +1296,16 @@ function CreatePageInner() {
           </div>
         </div>
       </div>
+
+      {/* Image Annotator Modal */}
+      {annotatorOpen && annotatorImage && (
+        <ImageAnnotator
+          imageUrl={annotatorImage}
+          onAnalyze={handleAnnotationAnalyze}
+          onClose={() => setAnnotatorOpen(false)}
+          loading={annotatorLoading}
+        />
+      )}
     </div>
   );
 }
