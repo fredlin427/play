@@ -9,7 +9,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { buildSDPrompt } from "@/lib/agents/prompt-template";
-import { extractPolishData, buildPositivePrompt, buildNegativePrompt, cleanPositive } from "@/lib/agents/prompt-craft";
+import { extractPolishData, buildPositivePrompt, buildNegativePrompt, buildModifyPrompt, cleanPositive } from "@/lib/agents/prompt-craft";
 import { callLLMStream, callLLM } from "@/lib/llm";
 import { prisma } from "@/lib/prisma";
 import type { DesignSpec } from "@/lib/schemas";
@@ -20,7 +20,7 @@ function sanitize(s: string): string {
 
 export async function POST(request: NextRequest) {
   try {
-    const { spec, projectId } = (await request.json()) || {};
+    const { spec, projectId, existingPrompt, feedback } = (await request.json()) || {};
     if (!spec) return NextResponse.json({ error: "spec required" }, { status: 400 });
 
     const designSpec = spec as DesignSpec;
@@ -52,13 +52,18 @@ export async function POST(request: NextRequest) {
         let finalPositive = sd.positive;
         let finalNegative = sd.negative;
         try {
-          // ── Phase 1: Stream positive prompt token-by-token ──────────
-          // V2: buildPositivePrompt now includes Z-Image-specific instructions
-          //     and front-loads key visual info in the first ~150 chars
+          // ── Phase 1: Stream positive prompt ─────────────────────────
+          // If user provided feedback on an existing prompt → MODIFY mode
+          // Otherwise → generate from scratch (preserving all spec data)
+          const isModify = !!(existingPrompt && feedback);
+          const systemPrompt = isModify
+            ? "You are editing an image prompt based on user feedback. Preserve everything not mentioned in the feedback. Output ONLY the modified prompt."
+            : "You are a prompt engineer for Z-Image-Turbo (flow-matching, CFG=1.0). Write detailed single-paragraph visual descriptions with front-loaded key info. Output ONLY the description.";
+
           for await (const token of callLLMStream(
-            "You are a prompt engineer for Z-Image-Turbo (flow-matching, CFG=1.0). Write detailed single-paragraph visual descriptions with front-loaded key info. Output ONLY the description.",
-            buildPositivePrompt(d),
-            { temperature: 0.5, maxTokens: 600 }
+            systemPrompt,
+            isModify ? buildModifyPrompt(existingPrompt, feedback) : buildPositivePrompt(d),
+            { temperature: isModify ? 0.4 : 0.5, maxTokens: isModify ? 400 : 600 }
           )) {
             fullText += token;
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token, full: sanitize(fullText) })}\n\n`));

@@ -11,6 +11,7 @@ import { callVisionLLM, isVisionAvailable } from "@/lib/llm";
 import { applyPromptImprovements } from "@/lib/agents/prompt-craft";
 import { readFileSync } from "fs";
 import { join } from "path";
+import sharp from "sharp";
 
 // Re-export for convenience (the canonical definition is in prompt-craft.ts)
 export { applyPromptImprovements };
@@ -43,24 +44,22 @@ export interface ImageFeedback {
 
 // ── Image Loading ───────────────────────────────────────────────────
 
-/** Load an image from the uploads directory and convert to base64. */
-function loadImageBase64(relativePath: string): { base64: string; mimeType: string } | null {
+/** Load and resize an image from uploads, return as base64 JPEG (max 512px, to fit Ollama vision limits). */
+async function loadImageBase64(relativePath: string): Promise<{ base64: string; mimeType: string } | null> {
   try {
-    // Paths look like "/api/files/images/zimage_xxx.png"
     const filename = relativePath.replace(/^\/api\/files\/images\//, "");
     const filePath = join(process.cwd(), "uploads", "images", filename);
     const buffer = readFileSync(filePath);
-    const base64 = buffer.toString("base64");
 
-    // Determine MIME type from extension
-    const ext = filename.split(".").pop()?.toLowerCase() || "png";
-    const mimeMap: Record<string, string> = {
-      png: "image/png",
-      jpg: "image/jpeg",
-      jpeg: "image/jpeg",
-      webp: "image/webp",
-    };
-    return { base64, mimeType: mimeMap[ext] || "image/png" };
+    // Resize to max 512px for Ollama vision compatibility (reduces base64 payload)
+    const resized = await sharp(buffer)
+      .resize(512, 512, { fit: "inside", withoutEnlargement: true })
+      .jpeg({ quality: 75 })
+      .toBuffer();
+
+    const base64 = resized.toString("base64");
+    console.log(`[Vision Feedback] Image loaded: ${(buffer.length/1024).toFixed(0)}KB → ${(resized.length/1024).toFixed(0)}KB (base64: ${(base64.length/1024).toFixed(0)}KB)`);
+    return { base64, mimeType: "image/jpeg" };
   } catch (e) {
     console.warn("[Vision Feedback] Failed to load image:", String(e).slice(0, 100));
     return null;
@@ -85,50 +84,34 @@ export async function analyzeGeneratedImage(
     return null;
   }
 
-  const image = loadImageBase64(imagePath);
+  const image = await loadImageBase64(imagePath);
   if (!image) return null;
 
-  const analysisPrompt = `You are an image quality inspector for a 3D-printing product photography pipeline.
+  const analysisPrompt = `Look at this generated product image. Imagine you're a designer giving honest feedback to a colleague.
 
-Analyze this generated image against the prompt that was used to create it.
-
-POSITIVE PROMPT:
+Prompt used to generate this:
 "${positivePrompt.slice(0, 500)}"
 
-NEGATIVE PROMPT (things that should NOT appear):
+Negative prompt (things to avoid):
 "${negativePrompt.slice(0, 300)}"
 
-Your task:
-1. Check if the image matches the prompt description (object type, color, material, shape, components, layout)
-2. Check for visual defects: blur, distortion, wrong colors, extra objects, missing components, bad lighting, wrong background, multiple objects instead of one
-3. Check if anything from the NEGATIVE prompt accidentally appeared in the image
-4. Suggest specific prompt changes that would fix each issue
+Give your assessment. Be visually specific and natural — but you MUST output valid JSON. Write the "summary" field in a conversational tone, like a designer talking. The JSON structure is just the container; the content inside should feel human.
 
-Output ONLY valid JSON (no markdown fences):
+CRITICAL: Output ONLY this JSON structure (no markdown, no greeting, no commentary outside the JSON):
 {
   "promptAlignment": "excellent|good|partial|poor",
   "quality": "good|acceptable|poor",
   "issues": [
     {
-      "description": "what is wrong",
+      "description": "what you actually see — be visual and specific",
       "severity": "critical|major|minor",
-      "suggestedFix": "change X to Y in the positive prompt"
+      "suggestedFix": "actionable suggestion in natural language"
     }
   ],
-  "promptImprovements": [
-    "add 'sharp edges' to negative prompt to fix soft/blurry edges",
-    "add 'centered composition' to positive prompt"
-  ],
+  "promptImprovements": ["specific prompt additions or changes"],
   "shouldRegenerate": true,
-  "summary": "Brief summary of findings in natural language"
-}
-
-Rules:
-- Be specific — name exact colors, shapes, materials that are wrong
-- Each issue MUST have a concrete suggestedFix (actionable prompt change)
-- Only recommend regeneration if there are actual fixable issues
-- If the image is good, say so and set shouldRegenerate: false
-- Be honest but constructive`;
+  "summary": "A natural paragraph describing what you see. Write like a person, not a form."
+}`;
 
   try {
     const result = await callVisionLLM(image.base64, image.mimeType, analysisPrompt, {

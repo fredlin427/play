@@ -36,8 +36,8 @@ async function callLocalSD(
     body: JSON.stringify({
       prompt: request.prompt,
       negative_prompt: request.negativePrompt || "",
-      width: Math.min(request.width || 512, 768),
-      height: Math.min(request.height || 512, 768),
+      width: Math.min(request.width || 1024, 1024),
+      height: Math.min(request.height || 1024, 1024),
       num_images: request.numImages || 1,
       num_inference_steps: request.numInferenceSteps || 8,
     }),

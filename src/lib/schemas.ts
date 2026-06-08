@@ -47,7 +47,7 @@ export const EMPTY_SPEC: DesignSpec = {
   subject: { name:"", description:"" },
   visual: { material:"", color:"", texture:"", finish:"", edgeTreatment:"" },
   structure: { mainShape:"", details:"", hasHoles:false, hasGrooves:false, hasMovingParts:false, isHollow:false },
-  composition: { viewAngle:"three-quarter front", poseOrOrientation:"", background:"pure white", lighting:"studio soft" },
+  composition: { viewAngle:"front or 3/4", poseOrOrientation:"", background:"pure white", lighting:"studio soft" },
   dimensions: { approximateSize:"" },
   useCase: { primaryUse:"", environment:"indoor" },
 };
@@ -84,7 +84,7 @@ export const EXTRACT_FALLBACK: ExtractSpecOutput = {
   inputType:"text", assetType:"unknown", generationGoal:"2d_to_3d",
   name:"", style:"", material:"", color:"", texture:"", finish:"", edgeTreatment:"",
   mainShape:"", details:"", hasHoles:false, hasGrooves:false, hasMovingParts:false, isHollow:false,
-  viewAngle:"three-quarter front", poseOrOrientation:"", size:"", use:"",
+  viewAngle:"front or 3/4", poseOrOrientation:"", size:"", use:"",
   message:"",
 };
 

@@ -40,16 +40,17 @@ export type PromptMode = "simple" | "complex";
 // Q&A Questions — simple mode
 // ═══════════════════════════════════════════════════════════════════════
 
+// NOTE: "material" is NOT asked during Q&A — AI recommends it as the final step
+// based on all collected info (functional needs, environment, etc.)
 export const SIMPLE_QUESTIONS = [
-  { key: "material",   zh: "用什麼材質？", en: "What material?", optsZH: ["PLA 新手友善·剛性·室內用", "PETG 耐用·微彈·食品級·醫療OK", "ABS 高強·耐100°C·需通風", "TPU 橡膠彈性·減震", "Resin 樹脂·高精度·光滑", "Nylon 尼龍·工業級·耐磨", "不確定"], optsEN: ["PLA beginner·rigid·indoor", "PETG durable·flex·food-safe", "ABS strong·100°C·ventilation", "TPU rubber-flexible", "Resin high-detail·smooth", "Nylon industrial·wear-resistant", "Unsure"] },
-  { key: "color",      zh: "什麼顏色？如有不同部位請分別說明（如：白色機身+黑色把手）", en: "What color(s)? Per part if different (e.g. white body + black handles).", optsZH: ["白色","灰色","黑色","米色/奶油","藍色","銀色","雙色搭配","其他"], optsEN: ["White","Grey","Black","Beige/Cream","Blue","Silver","Two-tone combo","Other"] },
-  { key: "dimensions", zh: "精確尺寸？請輸入 長x寬x高（mm），例如 400x300x200mm", en: "Exact dimensions? Enter LxWxH in mm, e.g. 400x300x200mm", optsZH: ["100x100x100mm", "200x150x100mm", "400x300x200mm", "自訂 LxWxH", "不確定"], optsEN: ["100x100x100mm", "200x150x100mm", "400x300x200mm", "Custom LxWxH", "Unsure"] },
-  { key: "shape",      zh: "什麼形狀？描述整體輪廓和結構（如：直立矩形盒狀、五層堆疊抽屜）", en: "Shape? Describe overall form (e.g. vertical rectangular box, 5 stacked drawers).", optsZH: ["直立矩形盒狀","橫向矩形","圓柱形","L形","不規則有機形","托盤/淺盤","其他"], optsEN: ["Vertical box","Horizontal rectangle","Cylindrical","L-shaped","Irregular organic","Tray/shallow","Other"] },
-  { key: "components", zh: "有哪些部件？請逐一描述每個部件的位置和細節（如：五個堆疊抽屜、每個抽屜中央有黑色半圓凹槽把手）", en: "Components? Describe each part with its position and detail (e.g. five stacked drawers, each with a centered black recessed semicircular pull near the top edge).", optsZH: ["無特殊部件","其他"], optsEN: ["No special components","Other"] },
-  { key: "surface",    zh: "表面質感？描述光澤度和觸感", en: "Surface finish? Describe gloss and texture.", optsZH: ["光滑啞光（matte）","亮光（glossy）","粗糙","拉絲金屬紋","磨砂","完全平滑無紋理","其他"], optsEN: ["Smooth matte","Glossy","Rough","Brushed metal","Frosted","Perfectly smooth/no texture","Other"] },
-  { key: "edge",       zh: "邊緣如何處理？", en: "Edge treatment?", optsZH: ["銳利直角","輕微倒角（beveled）","大圓角","斜邊","其他"], optsEN: ["Sharp/square","Slightly beveled","Large rounded","Chamfered","Other"] },
-  { key: "style",      zh: "設計風格？（如：現代簡約、北歐辦公、工業風、醫療級）", en: "Design style? (e.g. modern minimalist, Scandinavian office, industrial, medical-grade)", optsZH: ["現代簡約","北歐/Scandinavian","工業風","醫療級","古典","無特定風格","其他"], optsEN: ["Modern minimalist","Scandinavian","Industrial","Medical-grade","Classic","No specific style","Other"] },
-  { key: "details",    zh: "還有什麼視覺細節？（如：抽屜間隙、可調節腳座、隱藏螺絲）", en: "Any visual details? (e.g. thin gaps between drawers, adjustable feet, hidden screws)", optsZH: ["無特殊細節","其他"], optsEN: ["No special details","Other"] },
+  { key: "color",      zh: "什麼顏色？如有不同部位請分別說明（如：白色機身+黑色把手）", en: "What color(s)? Per part if different (e.g. white body + black handles).", optsZH: ["白色","灰色","黑色","米色/奶油","藍色","銀色","雙色搭配","不確定"], optsEN: ["White","Grey","Black","Beige/Cream","Blue","Silver","Two-tone combo","Unsure"] },
+  { key: "dimensions", zh: "精確尺寸？請輸入 長x寬x高（mm），例如 400x300x200mm", en: "Exact dimensions? Enter LxWxH in mm, e.g. 400x300x200mm", optsZH: ["100x100x100mm", "200x150x100mm", "400x300x200mm", "不確定"], optsEN: ["100x100x100mm", "200x150x100mm", "400x300x200mm", "Unsure"] },
+  { key: "shape",      zh: "什麼形狀？描述整體輪廓和結構（如：直立矩形盒狀、五層堆疊抽屜）", en: "Shape? Describe overall form (e.g. vertical rectangular box, 5 stacked drawers).", optsZH: ["直立矩形盒狀","橫向矩形","圓柱形","L形","不規則有機形","托盤/淺盤","不確定"], optsEN: ["Vertical box","Horizontal rectangle","Cylindrical","L-shaped","Irregular organic","Tray/shallow","Unsure"] },
+  { key: "components", zh: "有哪些部件？請逐一描述每個部件的位置和細節（如：五個堆疊抽屜、每個抽屜中央有黑色半圓凹槽把手）", en: "Components? Describe each part with its position and detail (e.g. five stacked drawers, each with a centered black recessed semicircular pull near the top edge).", optsZH: ["無特殊部件","不確定"], optsEN: ["No special components","Unsure"] },
+  { key: "surface",    zh: "表面質感？描述光澤度和觸感", en: "Surface finish? Describe gloss and texture.", optsZH: ["光滑啞光（matte）","亮光（glossy）","粗糙","拉絲金屬紋","磨砂","完全平滑無紋理","不確定"], optsEN: ["Smooth matte","Glossy","Rough","Brushed metal","Frosted","Perfectly smooth/no texture","Unsure"] },
+  { key: "edge",       zh: "邊緣如何處理？", en: "Edge treatment?", optsZH: ["銳利直角","輕微倒角（beveled）","大圓角","斜邊","不確定"], optsEN: ["Sharp/square","Slightly beveled","Large rounded","Chamfered","Unsure"] },
+  { key: "style",      zh: "設計風格？（如：現代簡約、北歐辦公、工業風、醫療級）", en: "Design style? (e.g. modern minimalist, Scandinavian office, industrial, medical-grade)", optsZH: ["現代簡約","北歐/Scandinavian","工業風","醫療級","古典","無特定風格","不確定"], optsEN: ["Modern minimalist","Scandinavian","Industrial","Medical-grade","Classic","No specific style","Unsure"] },
+  { key: "details",    zh: "還有什麼視覺細節？（如：抽屜間隙、可調節腳座、隱藏螺絲）", en: "Any visual details? (e.g. thin gaps between drawers, adjustable feet, hidden screws)", optsZH: ["無特殊細節","不確定"], optsEN: ["No special details","Unsure"] },
 ];
 
 // ═══════════════════════════════════════════════════════════════════════

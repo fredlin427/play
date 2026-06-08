@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     console.error("[Ask] Error:", err);
     return NextResponse.json({
-      questions: [{ field:"material", question:"What material?", options:["PLA","PETG","ABS","Resin","Metal","Wood","Other"], message:"Let me ask..." }],
+      questions: [{ field:"dimensions", question:"What dimensions?", options:["100x100x100mm","200x150x100mm","400x300x200mm","Unsure"], message:"Let me ask..." }],
       context: { round: 1, askedFields: [], answeredFields: [], skippedFields: [], coverage: null },
     });
   }

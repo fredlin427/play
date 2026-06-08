@@ -1,0 +1,462 @@
+[
+  {
+    "assetType": "product",
+    "objectName": "我要一個可以裝10個筆的容器",
+    "field": "dimensions",
+    "question": "精確尺寸？請輸入 長x寬x高（mm），例如 400x300x200mm",
+    "options": [
+      "100x100x100mm",
+      "200x150x100mm",
+      "300x200x150mm",
+      "400x300x200mm",
+      "自訂 LxWxH",
+      "不確定"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780892556865
+  },
+  {
+    "assetType": "product",
+    "objectName": "我要一個可以裝10個筆的容器",
+    "field": "material",
+    "question": "用什麼材質打印？",
+    "options": [
+      "PLA — 新手友善 · 剛性 · 不耐熱(60°C) · 室內用",
+      "PETG — 耐用 · 微彈 · 耐熱80°C · 食品級 · 醫療可用",
+      "ABS — 高強度 · 耐衝擊 · 耐熱100°C · 需通風",
+      "TPU — 橡膠彈性 · 減震 · 手機殼/密封圈",
+      "Resin 樹脂 — 超高精度 · 光滑表面 · 珠寶級 · 需UV固化",
+      "Nylon 尼龍 — 工業級 · 耐磨 · 自潤滑 · 齒輪/軸承",
+      "Wood PLA — 木質外觀 · 可打磨染色 · 裝飾用",
+      "不確定，幫我推薦",
+      "不確定"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780892556865
+  },
+  {
+    "assetType": "product",
+    "objectName": "我要一個可以裝10個筆的容器",
+    "field": "color",
+    "question": "顏色偏好？如有不同部位請分別說明",
+    "options": [
+      "白色",
+      "灰色",
+      "黑色",
+      "藍色",
+      "透明/半透明",
+      "雙色搭配",
+      "自訂",
+      "不確定"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780892556865
+  },
+  {
+    "assetType": "product",
+    "objectName": "我要一個可以裝10個筆的容器",
+    "field": "shape",
+    "question": "主體是什麼形狀？描述整體輪廓",
+    "options": [
+      "矩形/方形盒",
+      "圓柱形",
+      "球形/圓頂",
+      "不規則/有機形",
+      "托盤狀 (淺)",
+      "L形/支架形",
+      "自訂",
+      "不確定"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780892633353
+  },
+  {
+    "assetType": "product",
+    "objectName": "我要一個可以裝10個筆的容器",
+    "field": "details",
+    "question": "有哪些子元件/部件？請逐一列舉並描述位置",
+    "options": [
+      "抽屜/隔間",
+      "門/面板",
+      "把手/握柄",
+      "輪子/腳座",
+      "層架/托盤",
+      "鉸鏈/滑軌",
+      "掛鉤/支架",
+      "無子元件",
+      "自訂",
+      "不確定"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780892633353
+  },
+  {
+    "assetType": "medical",
+    "objectName": "心臟模型",
+    "field": "dimensions",
+    "question": "大約尺寸是多少？（醫療器械尺寸至關重要）",
+    "options": [
+      "小於 50mm (微型器械)",
+      "50–150mm (手持工具)",
+      "150–300mm (中型設備)",
+      "300–600mm (大型設備)",
+      "大於 600mm",
+      "不確定"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780898777994
+  },
+  {
+    "assetType": "medical",
+    "objectName": "心臟模型",
+    "field": "details",
+    "question": "有哪些子元件？請逐一說明每個部件的位置和功能",
+    "options": [
+      "抽屜/隔間",
+      "門/面板 (鎖定?)",
+      "把手/握柄",
+      "醫療級腳輪",
+      "層架/托盤",
+      "可調節支架",
+      "線纜管理",
+      "無子元件",
+      "不確定"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780898777994
+  },
+  {
+    "assetType": "medical",
+    "objectName": "心臟模型",
+    "field": "color",
+    "question": "顏色？（醫療環境通常有標準）",
+    "options": [
+      "白色 (醫療標準)",
+      "淺灰",
+      "淺藍/手術藍",
+      "不鏽鋼色",
+      "不確定"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780898777994
+  },
+  {
+    "assetType": "vehicle",
+    "objectName": "飛機模型",
+    "field": "details",
+    "question": "機械細節程度？請描述每個可見的機械特徵",
+    "options": [
+      "簡化 (概念示意)",
+      "中等 (可見關節/面板線)",
+      "精細 (所有螺絲/鉚釘/液壓桿)",
+      "超精細 (內部結構可見)",
+      "不確定"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780901051732
+  },
+  {
+    "assetType": "vehicle",
+    "objectName": "飛機模型",
+    "field": "dimensions",
+    "question": "模型尺寸？",
+    "options": [
+      "微型 (<50mm)",
+      "小型 (50–100mm)",
+      "中型 (100–300mm)",
+      "大型 (300mm+)",
+      "桌面展示級",
+      "不確定"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780901051732
+  },
+  {
+    "assetType": "vehicle",
+    "objectName": "飛機模型",
+    "field": "color",
+    "question": "顏色方案？",
+    "options": [
+      "單色金屬灰",
+      "軍武綠/沙色",
+      "黑白對比",
+      "鮮明警示色",
+      "不確定"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780901051732
+  },
+  {
+    "assetType": "medical",
+    "objectName": "聽診器",
+    "field": "dimensions",
+    "question": "大約尺寸是多少？（醫療器械尺寸至關重要）",
+    "options": [
+      "50x50x50mm (微型器械)",
+      "100x50x150mm (手持)",
+      "200x150x300mm (中型)",
+      "400x300x600mm (大型)",
+      "600x600x600mm+",
+      "不確定"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780902136213
+  },
+  {
+    "assetType": "medical",
+    "objectName": "聽診器",
+    "field": "details",
+    "question": "有哪些子元件？請逐一說明每個部件的位置和功能",
+    "options": [
+      "抽屜/隔間",
+      "門/面板 (鎖定?)",
+      "把手/握柄",
+      "醫療級腳輪",
+      "層架/托盤",
+      "可調節支架",
+      "線纜管理",
+      "無子元件",
+      "不確定"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780902136213
+  },
+  {
+    "assetType": "medical",
+    "objectName": "聽診器",
+    "field": "color",
+    "question": "顏色？（醫療環境通常有標準）",
+    "options": [
+      "白色 (醫療標準)",
+      "淺灰",
+      "淺藍/手術藍",
+      "不鏽鋼色",
+      "不確定"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780902136213
+  },
+  {
+    "assetType": "product",
+    "objectName": "手機殼",
+    "field": "dimensions",
+    "question": "精確尺寸？請輸入 長x寬x高（mm），例如 400x300x200mm",
+    "options": [
+      "100x100x100mm",
+      "200x150x100mm",
+      "300x200x150mm",
+      "400x300x200mm",
+      "不確定"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780906076561
+  },
+  {
+    "assetType": "product",
+    "objectName": "手機殼",
+    "field": "color",
+    "question": "顏色偏好？如有不同部位請分別說明",
+    "options": [
+      "白色",
+      "灰色",
+      "黑色",
+      "藍色",
+      "透明/半透明",
+      "雙色搭配",
+      "不確定"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780906076561
+  },
+  {
+    "assetType": "product",
+    "objectName": "手機殼",
+    "field": "shape",
+    "question": "主體是什麼形狀？描述整體輪廓",
+    "options": [
+      "矩形/方形盒",
+      "圓柱形",
+      "球形/圓頂",
+      "不規則/有機形",
+      "托盤狀 (淺)",
+      "L形/支架形",
+      "不確定"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780906076561
+  },
+  {
+    "assetType": "product",
+    "objectName": "手機殼",
+    "field": "details",
+    "question": "有哪些子元件/部件？請逐一列舉並描述位置",
+    "options": [
+      "抽屜/隔間",
+      "門/面板",
+      "把手/握柄",
+      "輪子/腳座",
+      "層架/托盤",
+      "鉸鏈/滑軌",
+      "掛鉤/支架",
+      "無子元件",
+      "不確定"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780906134031
+  },
+  {
+    "assetType": "container",
+    "objectName": "container",
+    "field": "dimensions",
+    "question": "Exact dimensions? Enter LxWxH in mm, e.g. 400x300x200mm",
+    "options": [
+      "100x100x100mm",
+      "200x150x100mm",
+      "300x200x150mm",
+      "400x300x200mm",
+      "Unsure"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780906885074
+  },
+  {
+    "assetType": "container",
+    "objectName": "container",
+    "field": "color",
+    "question": "Color preference? Specify per part if different.",
+    "options": [
+      "White",
+      "Grey",
+      "Black",
+      "Blue",
+      "Transparent/translucent",
+      "Two-tone combo",
+      "Unsure"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780906885074
+  },
+  {
+    "assetType": "container",
+    "objectName": "container",
+    "field": "shape",
+    "question": "What shape is the container?",
+    "options": [
+      "Rectangular box",
+      "Cylindrical",
+      "Tray-like",
+      "L-shaped",
+      "Organic",
+      "Unsure"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780906907251
+  },
+  {
+    "assetType": "container",
+    "objectName": "container",
+    "field": "surface",
+    "question": "Surface finish of the container?",
+    "options": [
+      "Smooth matte",
+      "Glossy",
+      "Frosted",
+      "Textured",
+      "Unsure"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780906907251
+  },
+  {
+    "assetType": "container",
+    "objectName": "container",
+    "field": "components",
+    "question": "What components does the container have?",
+    "options": [
+      "Drawers",
+      "Door/lid",
+      "Handles",
+      "Shelves",
+      "No special parts",
+      "Unsure"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780906907251
+  },
+  {
+    "assetType": "medical",
+    "objectName": "口罩",
+    "field": "dimensions",
+    "question": "大約尺寸是多少？（醫療器械尺寸至關重要）",
+    "options": [
+      "50x50x50mm (微型器械)",
+      "100x50x150mm (手持)",
+      "200x150x300mm (中型)",
+      "400x300x600mm (大型)",
+      "600x600x600mm+",
+      "不確定"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780910879845
+  },
+  {
+    "assetType": "medical",
+    "objectName": "口罩",
+    "field": "details",
+    "question": "有哪些子元件？請逐一說明每個部件的位置和功能",
+    "options": [
+      "抽屜/隔間",
+      "門/面板 (鎖定?)",
+      "把手/握柄",
+      "醫療級腳輪",
+      "層架/托盤",
+      "可調節支架",
+      "線纜管理",
+      "無子元件",
+      "不確定"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780910879845
+  },
+  {
+    "assetType": "medical",
+    "objectName": "口罩",
+    "field": "color",
+    "question": "顏色？（醫療環境通常有標準）",
+    "options": [
+      "白色 (醫療標準)",
+      "淺灰",
+      "淺藍/手術藍",
+      "不鏽鋼色",
+      "不確定"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780910879845
+  }
+]

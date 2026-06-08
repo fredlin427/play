@@ -130,33 +130,3 @@ export const MATERIAL_GUIDE: MaterialInfo[] = [
     },
   },
 ];
-
-/** Material categories for quick filtering when asking */
-export const MATERIAL_CATEGORIES = {
-  beginner: ["PLA", "PETG"],
-  functional: ["PETG", "ABS", "Nylon", "TPU"],
-  cosmetic: ["Resin", "Wood PLA", "Metal PLA"],
-  medical: ["PETG", "TPU", "Nylon"], // biocompatible / sterilizable
-  outdoor: ["ASA", "PETG", "ABS"],
-};
-
-/** Get material info by name (fuzzy match) */
-export function getMaterialInfo(name: string): MaterialInfo | undefined {
-  const lower = name.toLowerCase();
-  return MATERIAL_GUIDE.find(m =>
-    m.name.toLowerCase() === lower ||
-    m.name.toLowerCase().includes(lower) ||
-    lower.includes(m.name.toLowerCase())
-  );
-}
-
-/** Format material properties as a compact bar-chart string */
-export function formatMaterialBars(m: MaterialInfo): string {
-  const bar = (v: number) => "█".repeat(v) + "░".repeat(5 - v);
-  return [
-    `Strength:      ${bar(m.strength)}`,
-    `Flexibility:   ${bar(m.flexibility)}`,
-    `Heat Resist:   ${bar(m.heatResistance)}`,
-    `Easy to Print: ${bar(6 - m.printDifficulty)}`,
-  ].join("\n");
-}

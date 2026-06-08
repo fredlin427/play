@@ -30,13 +30,15 @@ export function ImageAnnotator({ imageUrl, onAnalyze, onClose, loading }: ImageA
 
     const w = img.naturalWidth;
     const h = img.naturalHeight;
-    const maxW = 500;
-    const scale = Math.min(1, maxW / w);
+    const dpr = window.devicePixelRatio || 1;
+    const maxDisplayW = 500;
+    const scale = Math.min(1, maxDisplayW / w);
+    // Use full resolution for drawing, scale only CSS display size
     canvas.width = w;
     canvas.height = h;
     canvas.style.width = `${w * scale}px`;
     canvas.style.height = `${h * scale}px`;
-
+    // Draw image at native resolution (CSS size is scaled for display)
     const ctx = canvas.getContext("2d");
     if (ctx) {
       ctx.drawImage(img, 0, 0);

@@ -39,7 +39,7 @@ function getConfig(): LLMConfig {
   _config = {
     provider,
     baseUrl: process.env.LOCAL_LLM_BASE_URL || "http://localhost:11434/v1",
-    model: process.env.LOCAL_LLM_MODEL || "qwen2.5:14b",
+    model: process.env.LOCAL_LLM_MODEL || "qwen2.5:7b",
     apiKey: process.env.LOCAL_LLM_API_KEY || "ollama",
   };
 
@@ -567,98 +567,6 @@ function mockIntake(input: string): string {
   });
 }
 
-// ── Mock: Risk ───────────────────────────────────────────────────────
-
-function mockRisk(input: string): string {
-  const lower = input.toLowerCase();
-  const isHigh = lower.includes("surgical guide") || lower.includes("cutting guide") || lower.includes("drilling guide") || lower.includes("implant") || lower.includes("operating room") || lower.includes("long-term") || lower.includes("treatment decision") || lower.includes("load-bearing");
-  const isMed = lower.includes("patient contact") || lower.includes("clinical") || lower.includes("sterilization") || lower.includes("anatomical model") || lower.includes("skin contact") || lower.includes("medical imaging");
-  if (isHigh) {
-    return JSON.stringify({ riskLevel: "high", reason: "Involves surgical equipment, implants, or operating room use.", requiresHumanReview: true, requiresClinicianApproval: true, allowedAutomation: "none" });
-  }
-  if (isMed) {
-    return JSON.stringify({ riskLevel: "medium", reason: "Patient contact or clinical use indicated.", requiresHumanReview: true, requiresClinicianApproval: true, allowedAutomation: "partial" });
-  }
-  return JSON.stringify({ riskLevel: "low", reason: "No medical risk indicators detected.", requiresHumanReview: false, requiresClinicianApproval: false, allowedAutomation: "full" });
-}
-
-// ── Mock: Clarification ──────────────────────────────────────────────
-
-function mockClarification(input: string): string {
-  const lower = input.toLowerCase();
-  const hasDim = lower.includes("mm") || lower.includes("cm") || /\d+\s*x\s*\d+/.test(lower);
-  const hasMat = /plastic|resin|pla|petg|abs|nylon/i.test(lower);
-  const hasClean = /wipe|wash|clean|autoclave|steril/i.test(lower);
-  const hasPatient = /patient|clinical|surgery/i.test(lower);
-
-  let answered = 0;
-  if (hasDim) answered++;
-  if (hasMat) answered++;
-  if (hasClean) answered++;
-  if (hasPatient) answered++;
-
-  if (answered >= 3 || lower.length > 300) {
-    return "I have enough information to proceed.";
-  }
-
-  const lines: string[] = [];
-  if (!hasDim) lines.push("1. What are the approximate dimensions? (length × width × height in mm)");
-  if (!hasMat) lines.push("2. Any preference for material type? (e.g., rigid plastic, flexible, heat-resistant)");
-  if (!hasClean) lines.push("3. How will this item be cleaned? (wipe only, washable, autoclave sterilisation)");
-  if (!hasPatient) lines.push("4. Will this item contact patients or be used in a clinical procedure?");
-  if (lines.length < 2) lines.push("5. When do you need this by?");
-
-  return lines.join("\n");
-}
-
-// ── Mock: Design Brief ───────────────────────────────────────────────
-
-function mockDesignBrief(_input: string): string {
-  return `## 3D Printing Design Brief
-
-### Project Title
-Custom Medical Supply Organizer
-
-### Summary
-A custom container for organizing medical supplies. Durable, easy-clean, efficient space use.
-
-### Requirements
-- Rounded corners for safety
-- Smooth, wipeable surfaces
-- Moderate strength, low flexibility
-- No patient contact
-
-### Constraints
-- Standard FDM print volume
-- Weight under 500g
-- Alcohol-resistant surface
-
-### Notes
-Low-risk organizational tool. Standard review applies.`;
-}
-
-// ── Mock: Material ───────────────────────────────────────────────────
-
-function mockMaterial(_input: string): string {
-  return `## Material Recommendation
-
-### Primary: PLA+
-- Excellent for organizational tools
-- Good strength-to-weight
-- Easy to print, low warping
-- Low cost
-
-### Alternatives
-- **PETG** — Better heat resistance
-- **ABS** — Higher strength, needs enclosure
-
-### Method: FDM
-- Layer: 0.2mm | Infill: 20-25% | Walls: 1.2mm (3 perimeters)
-
-### Post-Processing
-- Light sanding, optional clear coat`;
-}
-
 // ── Mock: Prompt ─────────────────────────────────────────────────────
 
 function mockPrompt(_input: string): string {
@@ -711,58 +619,12 @@ function mockPrompt(_input: string): string {
   ].join("\n");
 }
 
-// ── Mock: Ticket ─────────────────────────────────────────────────────
-
-function mockTicket(_input: string): string {
-  const id = "3DP-" + Date.now().toString(36).toUpperCase();
-  return `## Job Ticket: ${id}
-
-### Request Summary
-Custom medical supply organizer for storage area.
-
-### User Goal
-Organize 6-8 medical supply items in a clinical storage area.
-
-### Project Type
-Custom Container
-
-### Risk Level
-Low — No patient contact, office use only.
-
-### Human Review Required
-No
-
-### Required Dimensions
-200mm × 150mm × 100mm
-
-### Functional Requirements
-- 6-8 compartments of varying sizes
-- Rounded corners for safety
-- Stackable design
-- Easy to clean surface
-
-### Material Recommendation
-PLA+ (primary) or PETG (alternative), FDM printing
-
-### Suggested Printing Method
-FDM, 0.2mm layer height, 20-25% infill, 1.2mm wall thickness
-
-### Missing Information
-- Exact compartment sizes
-- Color preference
-
-### Next Action
-Review design brief and confirm dimensions before printing.
-
-### Engineer Notes
-[To be filled by engineer]`;
-}
-
 // ── Mock: Ask (Q&A question generation) ──────────────────────────────
 
 function mockAsk(input: string): string {
   // Return a valid question JSON that matches the expected schema
-  const fields = ["material", "color", "dimensions", "shape", "surface", "edge", "components", "style", "details"];
+  // NOTE: "material" excluded — AI recommends it at the end
+  const fields = ["color", "dimensions", "shape", "surface", "edge", "components", "style", "details"];
   const field = fields[Math.floor(input.length % fields.length)];
   const questions: Record<string, { q: string; opts: string[] }> = {
     material: { q: "What material will this be made of?", opts: ["PLA", "PETG", "ABS", "Resin", "Metal", "Wood", "Other"] },
@@ -824,87 +686,3 @@ function mockGeneral(_input: string): string {
   return "I'm here to help you describe what you need for your 3D printing request. Could you tell me more about what you'd like to create and how it will be used in the hospital?";
 }
 
-// ── Mock: Sketch Understanding ──────────────────────────────────────
-
-function mockSketchUnderstanding(input: string): string {
-  const lower = input.toLowerCase();
-  let projectType = "container";
-  let w: number | null = null, d: number | null = null, h: number | null = null;
-  let comp: number | null = null;
-
-  if (lower.includes("tray")) { projectType = "tray"; if (!h) h = 30; }
-  else if (lower.includes("tool holder") || lower.includes("holder") || lower.includes("mount")) {
-    projectType = "tool-holder"; if (!w) w = 200; if (!d) d = 60; if (!h) h = 150;
-  }
-  else if (lower.includes("bracket")) { projectType = "bracket"; }
-
-  const dimMatch = input.match(/(\d+)\s*[x×]\s*(\d+)\s*(?:[x×]\s*(\d+))?/i);
-  if (dimMatch) {
-    w = parseInt(dimMatch[1]) || null;
-    d = parseInt(dimMatch[2]) || null;
-    if (dimMatch[3]) h = parseInt(dimMatch[3]) || null;
-  }
-  const compMatch = input.match(/(\d+)\s*(?:compartment|slot|section|隔層|格)/i);
-  if (compMatch) comp = parseInt(compMatch[1]);
-
-  const hasPatient = lower.includes("patient") && !lower.includes("no patient");
-  const hasClinical = lower.includes("clinical") || lower.includes("surgery") || lower.includes("surgical");
-  const isHighRisk = lower.includes("implant") || lower.includes("surgical guide") || lower.includes("drilling guide") || lower.includes("cutting guide");
-  const riskLevel = isHighRisk ? "high" : (hasPatient || hasClinical ? "medium" : "low");
-
-  return JSON.stringify({
-    projectType,
-    confidence: dimMatch ? 0.6 : 0.3,
-    units: "mm",
-    overallDimensions: { length: d, width: w, height: h },
-    features: {
-      openTop: !lower.includes("lid") && !lower.includes("cover"),
-      lid: lower.includes("lid") || lower.includes("cover"),
-      compartments: comp,
-      dividerType: comp && comp > 1 ? "fixed" : null,
-      roundedCorners: !lower.includes("sharp"),
-      cornerRadius: lower.includes("sharp") ? 0 : 3.0,
-      wallThickness: 2.0,
-      baseThickness: 2.0,
-      holes: lower.includes("hole") ? [{ location: "side", diameter: 5, purpose: "ventilation" }] : [],
-      handles: lower.includes("handle") ? [{ location: "front", type: "grip" }] : [],
-      labelArea: lower.includes("label"),
-    },
-    functionalRequirements: {
-      easyToClean: lower.includes("wipe") || lower.includes("clean"),
-      strength: "medium",
-      flexibility: "rigid",
-      heatResistance: lower.includes("heat") || lower.includes("autoclave") ? "up to 120°C" : "up to 60°C",
-      sterilisation: lower.includes("autoclave") ? "autoclave" : lower.includes("steril") ? "chemical" : "none",
-      patientContact: hasPatient,
-      clinicalUse: hasClinical,
-    },
-    missingInformation: !dimMatch ? ["dimensions"] : [],
-    clarificationQuestions: !dimMatch ? ["What are the approximate dimensions in mm?"] : [],
-    riskLevel,
-    humanReviewRequired: riskLevel !== "low",
-    canGenerateCAD: riskLevel === "low" && !!dimMatch,
-    recommendedCADTemplate: projectType,
-  });
-}
-
-// ── Mock: CAD Template ─────────────────────────────────────────────
-
-function mockCadTemplate(input: string): string {
-  const lower = input.toLowerCase();
-  let tmpl = "container";
-  if (lower.includes("tray")) tmpl = "tray";
-  else if (lower.includes("tool holder") || lower.includes("holder") || lower.includes("mount")) tmpl = "tool-holder";
-  return JSON.stringify({ template: tmpl, reason: `Matched by keyword: ${tmpl}`, supported: true, fallbackNote: "" });
-}
-
-// ── Mock: Revision ─────────────────────────────────────────────────
-
-function mockRevision(_input: string): string {
-  return JSON.stringify({
-    changes: [{ action: "set_dimensions", target: "height", value: 70, reason: "User requested taller container" }],
-    summary: "Increased height from 60mm to 70mm.",
-    needsClarification: false,
-    clarificationQuestion: "",
-  });
-}

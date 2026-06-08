@@ -11,6 +11,9 @@ export async function POST(request: NextRequest) {
     const prompt = body?.prompt || "";
     const negativePrompt = body?.negativePrompt || "";
     const numImages = Math.min(body?.numImages || 4, 4);
+    const width = body?.width || 1024;
+    const height = body?.height || 1024;
+    const numInferenceSteps = body?.numInferenceSteps || 8;
 
     if (!projectId || !promptVersionId || !prompt) {
       return NextResponse.json({ error: "projectId, promptVersionId, and prompt are required" }, { status: 400 });
@@ -21,14 +24,12 @@ export async function POST(request: NextRequest) {
       data: { status: "image_generating", currentStep: 2 },
     });
 
-    console.log(`[T2I] Generating ${numImages} image(s)...`);
+    console.log(`[T2I] Generating ${numImages} image(s) at ${width}x${height}, ${numInferenceSteps} steps...`);
 
     const images = await textToImage({
       prompt,
       negativePrompt,
-      numImages,
-      width: 1024,
-      height: 1024,
+      numImages, width, height, numInferenceSteps,
     }, projectId);
 
     const savedImages = [];

@@ -147,15 +147,13 @@ STEP 1 — Draft the positive prompt (~200-250 words):
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Write ONE flowing sentence-chain describing this object for image generation.
 
-CRITICAL RULES:
-- FRONT-LOAD the most visually distinctive info in the first ~150 characters
-  (color + material + object name + overall shape). This is essential for multi-view
-  generation where only the first portion may be used as a compact base.
+RULES:
 - ONE flowing sentence-chain connected by commas — NOT bullet points
 - Describe exactly WHERE each feature is (spatial positioning: "at the top", "on the front face",
   "centered on each drawer", "near the bottom edge")
 - Describe each visible component with its own material, color, and shape
 - Write in natural English with visual adjectives — never "various", "multiple", "some", "several"
+- Lead with the most visually striking elements for emphasis
 - Keep beneficial tokens: "single object", "white background", "product photography"
 - Match the level of spatial detail shown in the reference example
 - Under 250 words
@@ -239,18 +237,12 @@ ${d.comp ? `- Component details: ${d.comp}` : ""}
 REFERENCE EXAMPLE (${fewShot.label} — study the style and spatial precision):
 ${fewShot.example}
 
-CRITICAL — FRONT-LOAD KEY INFO:
-Put color + material + object name + overall shape in the FIRST ~150 characters.
-This portion will be used as the compact base for multi-view generation.
-
 Rules:
 - ONE flowing sentence-chain connected by commas — NOT bullet points
-- FRONT-LOAD: color + material + name + shape in first ~150 chars
-- Describe exactly WHERE each feature is (spatial positioning)
+- Describe exactly WHERE each feature is (spatial positioning: "at the top", "on the front face")
 - Describe each visible component with its own material, color, and shape
-- Write in natural English with visual adjectives
-- Be specific — never use "various", "multiple", "some", "several"
-- Match the detail level of the reference example
+- Write in natural English with visual adjectives — be specific, never vague
+- Put the most visually important info early for emphasis
 - Keep it under 250 words
 - Output ONLY the description text, nothing else`;
 }
@@ -307,6 +299,34 @@ Rules:
 - Add 8-15 targeted negatives for THIS specific object
 - Under 350 characters total
 - Output ONLY the negative prompt text, nothing else`;
+}
+
+/**
+ * Build a MODIFICATION prompt — the LLM edits the existing prompt based
+ * on user feedback, preserving all elements that aren't explicitly changed.
+ * Used by the iterate/feedback flow instead of regenerating from scratch.
+ */
+export function buildModifyPrompt(existingPrompt: string, feedback: string): string {
+  return `You are editing an existing image-generation prompt based on user feedback.
+
+EXISTING PROMPT (preserve all of this):
+"${existingPrompt}"
+
+USER FEEDBACK:
+"${feedback}"
+
+Your job: modify the existing prompt to incorporate the user's feedback.
+CRITICAL: PRESERVE EVERYTHING that the user didn't ask to change.
+- If they say "make it taller" → keep the color, material, shape, components exactly as-is, just adjust the dimensions
+- If they say "add a handle" → add a handle description but keep everything else unchanged
+- If they say "change to red" → change the color but keep all other details
+
+Rules:
+- Start from the existing prompt, not from scratch
+- Only change what the feedback asks to change
+- Keep the same flowing paragraph style
+- Keep all spatial positioning, component descriptions, material, color, shape, surface details
+- Output ONLY the modified prompt, nothing else`;
 }
 
 // ── Post-Polish Quality Validation ──────────────────────────────────
