@@ -44,6 +44,17 @@ export async function POST(request: NextRequest) {
     // Extract all spec fields into flat record
     const d = extractPolishData(designSpec);
 
+    // Fetch user-starred prompts as extra examples
+    let starredExamples: Array<{id:string;craftedPrompt:string;negativePrompt:string}> = [];
+    try {
+      starredExamples = await prisma.promptVersion.findMany({
+        where: { starred: true },
+        select: { id: true, craftedPrompt: true, negativePrompt: true },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+      }) as any;
+    } catch { /* best-effort */ }
+
     // Create a ReadableStream for SSE
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
@@ -62,7 +73,7 @@ export async function POST(request: NextRequest) {
 
           for await (const token of callLLMStream(
             systemPrompt,
-            isModify ? buildModifyPrompt(existingPrompt, feedback) : buildPositivePrompt(d),
+            isModify ? buildModifyPrompt(existingPrompt, feedback) : buildPositivePrompt(d, starredExamples),
             { temperature: isModify ? 0.4 : 0.5, maxTokens: isModify ? 400 : 600 }
           )) {
             fullText += token;

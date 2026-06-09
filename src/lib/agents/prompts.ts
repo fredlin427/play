@@ -38,8 +38,13 @@ const EXTRACT_EN = [
   '- For booleans (hasHoles, hasGrooves, hasMovingParts, isHollow), infer ONLY if there is clear evidence: "hollow tube" -> isHollow:true, "with ventilation holes" -> hasHoles:true',
   '- For dimensions, ONLY fill size if the user said a number or size word (mm, cm, big, small, fits in hand). Otherwise leave "".',
   "- Match user's EXACT language for name, details, and message.",
-  '- If user describes a hospital/clinical tool -> assetType: "medical"',
-  '- If user describes a mechanical part -> assetType: "product" or "robot"',
+  '- CRITICAL — classify assetType based on these keywords:',
+  '  * hospital, surgical, clinical, patient, sterile, dental, anatomy, implant, prosthetic, scalpel, forceps, syringe, IV, catheter, bandage, splint, orthotic, diagnostic, monitor, ventilator, defibrillator, wheelchair, crutch, stethoscope, x-ray, MRI, CT, ultrasound, endoscope, biopsy, suture, incision, wound, organ, bone, tissue, blood, lab, pharmacy, pill, capsule, medicine, sanitizer, disinfect, gown, glove, mask, face shield → "medical"',
+  '  * robot, drone, gear, bearing, motor, servo, bracket, mount, chassis, joint, actuator, piston, valve, hinge, bolt, screw, nut, washer, spring, shaft, pulley, belt, chain, axle, wheel, track, propeller, turbine, compressor, pump, engine, transmission, clutch, brake, caliper, rotor, stator, solenoid, relay, switch, connector, terminal, circuit, wire, cable, sensor, camera, lens, antenna, radar, lidar, gps, navigation, control → "robot"',
+  '  * furniture, cabinet, shelf, drawer, table, chair, desk, bed, sofa, couch, stool, bench, rack, stand, wardrobe, closet, bookcase, nightstand, dresser, vanity, mirror, headboard, mattress, cushion, pillow, ottoman, coat, hanger, lamp, chandelier, light, bulb, shade → "furniture"',
+  '  * jewelry, ring, necklace, bracelet, earring, pendant, brooch, cufflink, tiara, crown, gem, diamond, ruby, sapphire, emerald, pearl, gold, silver, platinum → "jewelry"',
+  '  * character, figurine, statue, bust, sculpture, miniature, toy, doll, action, anime, cartoon, mascot, animal, creature, monster, dragon, dinosaur, robot toy → "character"',
+  '  * If none match → "product"',
 ].join("\n");
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -79,8 +84,13 @@ const EXTRACT_ZH = [
   "- 布爾值僅在文本中有明確證據時推斷：中空管 -> isHollow:true，有通風孔 -> hasHoles:true",
   '- 尺寸欄位：僅在用戶提到數字或尺寸詞（mm、cm、大、小、手掌大小）時填寫。否則留空 ""。',
   "- name、details 必須使用用戶的原詞彙。",
-  '- 若用戶描述醫院/臨床工具 -> assetType: "medical"',
-  '- 若用戶描述機械零件 -> assetType: "product" 或 "robot"',
+  '- 重要 — 根據關鍵詞分類 assetType：',
+  '  * 醫院、手術、臨床、病人、無菌、牙科、解剖、植入物、義肢、手術刀、鑷子、注射器、導管、繃帶、夾板、矯形、診斷、監測器、呼吸機、除顫器、輪椅、拐杖、聽診器、X光、內視鏡、活檢、縫合、器官、骨骼、組織、血液、實驗室、藥房、藥丸、消毒、手術衣、手套、口罩、面罩 → "medical"',
+  '  * 機器人、無人機、齒輪、軸承、馬達、舵機、支架、底座、底盤、關節、致動器、活塞、閥門、鉸鏈、螺栓、螺絲、螺帽、彈簧、軸、皮帶輪、鏈條、車輪、履帶、螺旋槳、渦輪、壓縮機、泵、引擎、變速箱、離合器、煞車、傳感器、鏡頭、天線、雷達 → "robot"',
+  '  * 家具、櫃子、架子、抽屜、桌子、椅子、床、沙發、凳子、衣櫃、書架、床頭櫃、梳妝台、燈具、吊燈 → "furniture"',
+  '  * 首飾、戒指、項鍊、手鐲、耳環、吊墜、胸針、袖扣、寶石、鑽石、紅寶石、黃金、白銀、鉑金 → "jewelry"',
+  '  * 角色、公仔、雕像、半身像、雕塑、微型、玩具、人偶、動漫、卡通、吉祥物、動物、生物、怪物、恐龍 → "character"',
+  '  * 都不符合 → "product"',
 ].join("\n");
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -89,7 +99,7 @@ const EXTRACT_ZH = [
 const ASK_EN = [
   "You are a design consultant helping collect structured specs for 2D-to-3D generation (3D printing).",
   "",
-  "Your job: Ask 2-3 missing questions per round. Prioritize:",
+  "Your job: Ask 3-4 missing questions per round (more is better — cover ground quickly). Prioritize:",
   "1. FUNCTIONAL NEEDS first — what must this object DO? Load-bearing? Heat exposure? Water/chemical contact? Food contact? Flexible? Ask what the material needs to WITHSTAND.",
   "2. IMPORTANT: name (if missing), dimensions (in mm, always LxWxH format like 400x300x200mm), color, main shape, view angle, texture, components/details",
   "3. OPTIONAL: finish, edge treatment, style, environment, structural booleans",
@@ -106,7 +116,7 @@ const ASK_EN = [
   "- unknown -> ask asset type first, then functional needs, then dimensions",
   "",
   "RULES:",
-  "- MUST ask 2-3 questions per round. Each with 3-6 clickable options + 'Unsure'.",
+  "- MUST ask 3-4 questions per round. Each with 3-6 clickable options + 'Unsure'. More questions = faster done.",
   "- Do NOT include 'Other', 'Custom', or 'Skip' options — user has text input for custom answers and a skip button.",
   "- 'Unsure' option counts as skip — don't re-ask.",
   "- Questions MUST be specific to THIS object. NOT generic templates.",
@@ -126,7 +136,7 @@ const ASK_EN = [
 const ASK_ZH = [
   "你是一位設計顧問，協助收集用於 2D 轉 3D 生成（3D 列印）的結構化規格。",
   "",
-  "你的任務：每輪問 2-3 個問題。按以下優先級：",
+  "你的任務：每輪問 3-4 個問題（越多越好，快速覆蓋）。按以下優先級：",
   "1. 功能需求（先問）— 這個物件要做什麼？要承重嗎？要耐熱嗎？要碰水/化學品嗎？要接觸食品/皮膚嗎？要彈性嗎？先問清楚功能需求",
   "2. 重要：物品名稱（如缺失）、尺寸（須附 mm，一律長x寬x高格式如 400x300x200mm）、顏色、主要形狀、視角、紋理、部件/結構細節",
   "3. 可選：表面處理、邊緣處理、風格、環境、結構布爾值",
@@ -143,7 +153,7 @@ const ASK_ZH = [
   "- unknown -> 先問資產類型，再問功能需求，再問尺寸",
   "",
   "規則：",
-  "- 每輪必須問 2-3 題。每題 3-6 個可點擊選項。",
+  "- 每輪必須問 3-4 題。每題 3-6 個可點擊選項。越多題 = 越快完成。",
   "- 不要放「其他」、「自訂」或「跳過」選項 — 用戶有輸入框可以自訂答案，也有跳過按鈕。只放「不確定」作為兜底選項。",
   "- 不確定選項等同跳過——該欄位不會再問。",
   "- 問題必須針對這個特定物件，不是通用模板。",

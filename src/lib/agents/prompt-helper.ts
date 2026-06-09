@@ -151,12 +151,24 @@ export async function ask(
   // Asset-type-specific probing instructions
   const assetType = spec.meta?.assetType || "unknown";
   const assetHints: Record<string, string> = {
-    medical: zh ? "這是醫療物件 — 必須追問：滅菌方式、病人接觸、生物相容性、清潔方法" : "This is medical — must ask: sterilization method, patient contact, biocompatibility, cleaning method",
-    robot: zh ? "這是機械物件 — 必須追問：關節類型、結構需求、活動部件、受力情況" : "This is mechanical — must ask: joint types, structural needs, moving parts, load requirements",
-    furniture: zh ? "這是家具 — 必須追問：承重需求、表面耐用度、組裝方式" : "This is furniture — must ask: load-bearing needs, surface durability, assembly method",
-    jewelry: zh ? "這是首飾 — 必須追問：金屬類型、寶石鑲嵌、扣環類型、表面處理" : "This is jewelry — must ask: metal type, gem settings, clasp type, surface finish",
-    character: zh ? "這是角色/公仔 — 必須追問：姿勢、比例、風格、上色方案" : "This is character/figurine — must ask: pose, proportions, style, coloring scheme",
-    product: zh ? "先問功能需求再問材質 — 承重？耐熱？防水？食品接觸？彈性？" : "Ask functional needs before material — load-bearing? heat? waterproof? food contact? flexible?",
+    medical: zh
+      ? "⚠️ 這是醫療物件。必須問：1) 使用場景（手術室/診間/病房/教學）2) 是否需要滅菌（高壓滅菌/化學消毒/不需）3) 是否接觸病人（直接/間接/不接觸）4) 清潔方式（擦拭/浸泡/不可清洗）。不要問普通收納盒會問的問題。"
+      : "⚠️ This is MEDICAL. Must ask: 1) Usage environment (OR/clinic/ward/teaching) 2) Sterilization needed? (autoclave/chemical/none) 3) Patient contact? (direct/indirect/none) 4) Cleaning method. Do NOT ask generic storage questions.",
+    robot: zh
+      ? "⚠️ 這是機械/機器人。必須問：1) 關節類型和活動範圍 2) 受力方向和大小 3) 精度/公差要求 4) 是否需要與其他零件裝配。專注機械需求，不要問裝飾性問題。"
+      : "⚠️ This is MECHANICAL. Must ask: 1) Joint types and range of motion 2) Load direction and magnitude 3) Precision/tolerance needs 4) Assembly with other parts. Focus on mechanical needs.",
+    furniture: zh
+      ? "⚠️ 這是家具。必須問：1) 承重需求（幾公斤）2) 使用頻率（日常/偶爾）3) 表面耐用度（防刮/防水/耐髒）4) 是否需要組裝/拆卸。不要只問顏色形狀。"
+      : "⚠️ This is FURNITURE. Must ask: 1) Load-bearing (how many kg) 2) Usage frequency 3) Surface durability (scratch/water/stain) 4) Assembly/disassembly needed. Don't only ask about color and shape.",
+    jewelry: zh
+      ? "⚠️ 這是首飾。必須問：1) 金屬類型（金/銀/鉑/銅）2) 寶石類型和鑲嵌方式 3) 表面處理（拋光/啞光/雕刻/氧化）4) 佩戴方式（戒指/項鍊/耳環/手鐲）。專注精細細節。"
+      : "⚠️ This is JEWELRY. Must ask: 1) Metal type (gold/silver/platinum/brass) 2) Gem type and setting style 3) Surface finish (polish/matte/engrave/oxidize) 4) Wear method (ring/necklace/earring/bracelet). Focus on fine detail.",
+    character: zh
+      ? "⚠️ 這是角色/公仔。必須問：1) 姿勢（站立/坐下/動態）2) 比例風格（寫實/Q版/日系/美系）3) 上色方案（素體/多色/透膚）4) 底座需求。"
+      : "⚠️ This is CHARACTER/FIGURINE. Must ask: 1) Pose (standing/sitting/action) 2) Proportion style (realistic/chibi/anime/comic) 3) Color scheme 4) Base/stand needed.",
+    product: zh
+      ? "⚠️ 這是產品/工具。必須先問功能需求：1) 這個物件會承受重量/壓力嗎？2) 會碰到水/熱/化學品嗎？3) 會在戶外使用嗎？4) 需要彈性/軟質嗎？問完功能再問形狀顏色。"
+      : "⚠️ This is a PRODUCT/TOOL. Must ask functional needs FIRST: 1) Does it bear weight/pressure? 2) Contact with water/heat/chemicals? 3) Outdoor use? 4) Needs flexibility/softness? Ask function BEFORE shape and color.",
   };
   const assetHint = assetHints[assetType] || "";
 
@@ -250,53 +262,15 @@ Your job:
     ].filter(Boolean).length;
     const objName = spec.subject?.name || (zh ? "這個物件" : "this object");
 
-    // ── PHASE 2: Question bank REPLACES LLM questions when basic fields are partially filled ──
-    // Bank questions are domain-specific (medical→sterilization, furniture→load-bearing, etc.)
-    // and are far more relevant than generic LLM questions at this stage.
-    // Trigger early (3+ fields) so ALL bank questions have time to be asked before max rounds
-    if (filledCount >= 3) {
-      const excludeSet = new Set([...context.askedFields, ...context.skippedFields]);
-      const bankQs: typeof validQs = [];
-
-      for (const t of bank) {
-        if (bankQs.length >= 3) break;
-        const bankField = t.field.includes(".") ? t.field.split(".").pop() || t.field : t.field;
-        const mappedField = bankField === "approximateSize" ? "dimensions"
-          : bankField === "primaryUse" ? "use"
-          : bankField === "mainShape" ? "shape"
-          : bankField === "viewAngle" ? "view"
-          : bankField === "environment" ? "environment"
-          : bankField;
-        if (!VALID_FIELDS.includes(mappedField)) continue;
-        if (excludeSet.has(mappedField)) continue;
-        const isFilled = checkFieldFilled(spec, t.field);
-        if (isFilled) continue;
-        const qText = zh ? t.questions.zh : t.questions.en;
-        // Remove redundant "自訂"/"Custom" and "跳過"/"Skip" — user has input field + skip button
-        const qOpts = (zh ? t.options.zh : t.options.en)
-          .filter(o => o !== "不確定" && o !== "Unsure"
-            && !o.startsWith("自訂") && !o.startsWith("Custom")
-            && !o.includes("跳過") && !o.includes("Skip"));
-        bankQs.push({
-          field: mappedField,
-          question: qText,
-          options: [...qOpts, zh ? "不確定" : "Unsure"],
-          message: "",
-        });
-        excludeSet.add(mappedField);
-      }
-
-      if (bankQs.length > 0) {
-        console.log(`[Ask] Bank REPLACED LLM questions: ${bankQs.length} bank Qs for ${assetType} (filled=${filledCount})`);
-        validQs = bankQs; // Bank questions are the primary source now
-      }
-    } else if (validQs.length < 2) {
-      // LLM gave too few questions — supplement with bank
+    // ── PHASE 2: Bank supplements LLM, never replaces ──
+    // LLM generates dynamic questions based on asset type hints in the prompt.
+    // Bank only kicks in when LLM gives too few questions, adding 1-2 targeted ones.
+    if (validQs.length < 3) {
       const excludeSet = new Set([...context.askedFields, ...context.skippedFields, ...validQs.map(q => q.field)]);
       const bankQs: typeof validQs = [];
 
       for (const t of bank) {
-        if (bankQs.length + validQs.length >= 3) break;
+        if (bankQs.length + validQs.length >= 4) break;
         const bankField = t.field.includes(".") ? t.field.split(".").pop() || t.field : t.field;
         const mappedField = bankField === "approximateSize" ? "dimensions"
           : bankField === "primaryUse" ? "use"
@@ -323,8 +297,8 @@ Your job:
       }
 
       if (bankQs.length > 0) {
-        console.log(`[Ask] Supplemented LLM with ${bankQs.length} bank questions (${assetType})`);
-        validQs = [...validQs, ...bankQs].slice(0, 3);
+        console.log(`[Ask] Supplemented LLM with ${bankQs.length} bank questions (${assetType}, filled=${filledCount})`);
+        validQs = [...validQs, ...bankQs].slice(0, 4);
       }
     }
 

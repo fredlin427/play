@@ -57,19 +57,19 @@ describe("getQuestionBank", () => {
 });
 
 describe("getMaxRounds", () => {
-  it("returns 10 for medical (deepest probing)", () => {
-    expect(getMaxRounds("medical")).toBe(10);
+  it("returns 12 for medical (deepest probing)", () => {
+    expect(getMaxRounds("medical")).toBe(12);
   });
 
-  it("returns 5 for unknown (shallowest)", () => {
-    expect(getMaxRounds("unknown")).toBe(5);
+  it("returns 8 for unknown (shallowest)", () => {
+    expect(getMaxRounds("unknown")).toBe(8);
   });
 
   it("returns expected values for all known types", () => {
-    expect(getMaxRounds("product")).toBe(8);
-    expect(getMaxRounds("robot")).toBe(9);
-    expect(getMaxRounds("furniture")).toBe(9);
-    expect(getMaxRounds("jewelry")).toBe(8);
-    expect(getMaxRounds("character")).toBe(7);
+    expect(getMaxRounds("product")).toBe(10);
+    expect(getMaxRounds("robot")).toBe(11);
+    expect(getMaxRounds("furniture")).toBe(11);
+    expect(getMaxRounds("jewelry")).toBe(10);
+    expect(getMaxRounds("character")).toBe(9);
   });
 });

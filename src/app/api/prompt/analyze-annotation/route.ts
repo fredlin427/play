@@ -39,22 +39,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ changes: [], improvedPositive: positivePrompt, message: "Vision model not available." });
     }
 
-    // Step 1: Vision model describes what the user DREW (not what the generated image shows)
-    const visionPrompt = `Look at these two images of the same 3D-printed object.
+    // Step 1: Vision model describes what the user DREW on the image
+    const visionPrompt = `Look at this image. The user drew colored lines on top of a generated 3D-print object photo. Those colored marks show what they want to CHANGE or ADD to the object.
 
-IMAGE 1: The original generated image.
-IMAGE 2: The user drew on top of it with a red pen — those red marks are NEW FEATURES they want to ADD.
+Describe ONLY what the user's colored marks represent as physical 3D features:
+- What shape(s) did they draw? Be specific and literal.
+- Where on the object did they draw it? (top, bottom, front, side, center, edge)
+- What does the drawing suggest should be added or changed?
 
-Imagine you're looking at the user's sketch on a napkin. They're showing you what they want the final object to look like. The red lines aren't abstract symbols — they represent actual physical features.
+IMPORTANT: Describe the ACTUAL shapes you see. If the user drew a circle, say "circle". If they drew a rectangle, say "rectangle". If they drew wavy lines, say "wavy lines". Do NOT guess or use examples from this prompt — just describe what you literally see.
 
-Describe what the user drew, naturally:
-- "They drew a heart shape on the front panel — so the object should have a heart-shaped detail there"
-- "There's a curved line along the top edge — the rim should follow that organic contour"
-- "A small circle near the bottom — probably a button or indicator light"
-
-Don't overthink it. Just describe what shapes you see and where they are on the object. Talk like you're explaining the sketch to a 3D modeler.
-
-Output ONE short paragraph (under 100 words). No labels, no prefixes — just the description.`;
+Output ONE short paragraph (under 80 words) in plain English. No JSON, no labels.`;
 
     // Resize images for Ollama vision compatibility
     const annImg = await resizeBase64Image(annotatedBase64);

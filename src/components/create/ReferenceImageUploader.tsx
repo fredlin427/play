@@ -15,12 +15,13 @@ interface UploadedImage {
 interface ReferenceImageUploaderProps {
   projectId: string | null;
   onUpload: (images: UploadedImage[]) => void;
+  onProjectCreated?: (projectId: string) => void;
 }
 
 const MAX_SIZE = 10 * 1024 * 1024; // 10MB
 const ALLOWED = ["image/png", "image/jpeg", "image/webp"];
 
-export function ReferenceImageUploader({ projectId, onUpload }: ReferenceImageUploaderProps) {
+export function ReferenceImageUploader({ projectId, onUpload, onProjectCreated }: ReferenceImageUploaderProps) {
   const [images, setImages] = useState<UploadedImage[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -28,12 +29,26 @@ export function ReferenceImageUploader({ projectId, onUpload }: ReferenceImageUp
   const inputRef = useRef<HTMLInputElement>(null);
 
   const processFiles = useCallback(async (files: FileList) => {
-    if (!projectId) {
-      setError("Create project first before uploading");
-      return;
+    setError("");
+
+    // Auto-create project if needed
+    let pid: string = projectId || "";
+    if (!pid) {
+      try {
+        const r = await fetch("/api/projects", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: "New Design", description: "Image reference" }),
+        });
+        const data = await r.json();
+        pid = data.id as string;
+        onProjectCreated?.(pid);
+      } catch {
+        setError("Failed to create project. Please type a description first.");
+        return;
+      }
     }
 
-    setError("");
     const newImages: UploadedImage[] = [];
 
     for (const file of Array.from(files)) {
@@ -74,7 +89,7 @@ export function ReferenceImageUploader({ projectId, onUpload }: ReferenceImageUp
       try {
         const formData = new FormData();
         formData.append("file", file);
-        formData.append("projectId", projectId);
+        formData.append("projectId", pid);
 
         const res = await fetch("/api/upload/image", {
           method: "POST",
@@ -212,11 +227,6 @@ export function ReferenceImageUploader({ projectId, onUpload }: ReferenceImageUp
         </div>
       )}
 
-      {!projectId && (
-        <p className="text-xs text-amber-600 bg-amber-50 rounded px-3 py-2">
-          Create the project first, then upload reference images.
-        </p>
-      )}
     </div>
   );
 }

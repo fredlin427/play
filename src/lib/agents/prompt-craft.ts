@@ -76,22 +76,22 @@ const FEW_SHOT_EXAMPLES: FewShotExample[] = [
   {
     category: "furniture",
     label: "furniture / storage / containers",
-    example: `"A modern minimalist white wooden five-drawer storage cabinet, rectangular vertical box shape, clean flat panels, matte white finish, front-facing five stacked drawers, each drawer has a centered black recessed semicircular cut-out handle near the top edge, thin dark gaps between drawer fronts, smooth sharp-edged cabinet body with slightly beveled edges, plain white side panels, flat top surface, small black adjustable feet at the bottom corners, simple Scandinavian office furniture design, accurate proportions, symmetrical front layout, clean hard-surface geometry"`,
+    example: `"A matte white PLA medical supply cabinet, tall rectangular vertical form, five identical drawers stacked front-to-bottom with uniform 3mm gaps between each drawer front, every drawer has a centered recessed black semicircular pull handle positioned 15mm from the top edge, cabinet body has clean flat side panels with slightly beveled 1mm edges, flat top surface with no overhang, four small cylindrical black adjustable feet at bottom corners, each drawer front is a single flat panel with no seams or joints, overall proportions are exactly 400mm wide by 500mm tall by 300mm deep, symmetrical front layout with drawer pulls perfectly aligned on vertical centerline, hard-surface geometry with crisp edges, single object isolated on pure white background, studio soft lighting, product photography, 3D render quality"`,
   },
   {
     category: "medical",
     label: "medical / clinical / devices",
-    example: `"A sterile white medical instrument tray, rectangular flat shallow design, 400mm by 300mm by 30mm, smooth non-porous polypropylene surface with matte finish, slightly raised rolled edges on all four sides for spill containment, rounded inner corners for easy cleaning, four small non-slip silicone feet at the bottom corners, clean medical-grade aesthetic with no seams or joints, clinical product photography style, single object centered on pure white background"`,
+    example: `"A sterile white medical-grade PETG instrument tray, shallow rectangular form measuring 400mm by 300mm by 30mm, perfectly flat bottom surface for print bed adhesion, smooth non-porous matte surface on all faces, slightly raised 5mm rolled edges along all four sides for spill containment, rounded inner corners with 8mm radius for easy cleaning and sterilization, four small non-slip silicone feet pads at each bottom corner, single-piece seamless construction with no joints or seams visible, medical-grade clean aesthetic with uniform surface finish, single object isolated on pure white background, studio soft even lighting, clinical product photography, 3D render quality"`,
   },
   {
     category: "mechanical",
     label: "mechanical / robot / brackets / mounts",
-    example: `"A precision-engineered black PLA mounting bracket, L-shaped angular form with two perpendicular flat arms, each arm has two countersunk screw holes near the edges, reinforced triangular gusset at the inner corner, smooth flat surfaces with slight ribbed texture on the outer face for grip, sharp chamfered outer edges, 3mm uniform wall thickness throughout, structural grid infill pattern visible on the underside, clean industrial design, accurate mechanical proportions"`,
+    example: `"A precision black PLA mounting bracket, L-shaped angular form with two perpendicular flat arms each 60mm long, each arm has two countersunk M3 screw holes positioned 8mm from the outer edge, reinforced triangular gusset at the inner corner junction for structural rigidity, smooth flat matte surfaces on all faces, sharp chamfered 45-degree outer edges, 3mm uniform wall thickness throughout the entire part, visible grid infill pattern on the underside surface only, flat bottom surface parallel to build plate, clean industrial design with accurate mechanical proportions, single object isolated on pure white background, studio soft lighting, technical product photography, 3D render quality"`,
   },
   {
     category: "organic",
     label: "organic / props / decorative / characters",
-    example: `"A smooth organic-shaped banana, elongated curved cylindrical form tapering at both ends, bright yellow peel with subtle brown speckles and a slight green tip at one end, natural slight ridge running along the length, soft diffused studio lighting, single object centered on pure white background, realistic fruit proportions with gentle natural curve, clean silhouette"`,
+    example: `"A smooth organic-shaped curved banana, elongated cylindrical form with gentle continuous curve tapering at both ends, bright yellow peel with subtle brown speckle texture and a small green tip at one end, a single natural ridge line running longitudinally along the outer curve, smooth matte surface with slight natural waxy sheen, realistic proportions with no sharp angles or flat faces, soft diffused studio lighting creating gentle shadow definition, single object centered and isolated on pure white background, product photography, 3D render quality"`,
   },
 ];
 
@@ -108,104 +108,81 @@ function getFewShotExample(assetType: string): FewShotExample {
 
 // ── Joint Prompt (Non-Streaming) ────────────────────────────────────
 
+/** A starred (user-saved) prompt that serves as an extra few-shot example. */
+export interface StarredExample {
+  id: string;
+  craftedPrompt: string;
+  negativePrompt: string;
+}
+
 /**
- * Build a chain-of-thought prompt that generates BOTH positive and negative
- * in a single LLM call. The model drafts → self-critiques → refines → outputs JSON.
+ * Build a compact prompt that generates BOTH positive and negative
+ * in a single LLM call. Uses built-in few-shot examples, enhanced
+ * with any user-starred prompts for the same asset type.
  *
- * Includes a few-shot example matched to the asset type for higher accuracy.
+ * @param d         - Extracted spec data
+ * @param starred   - Optional user-starred prompts to use as extra examples
  */
-export function buildJointPrompt(d: PolishData): string {
+export function buildJointPrompt(d: PolishData, starred?: StarredExample[]): string {
   const fewShot = getFewShotExample(d.assetType);
 
-  return `You are generating prompts for Z-Image-Turbo, a FLOW-MATCHING image model with CFG=1.0.
-This means the positive prompt is the ONLY control — there is no guidance scale to amplify the signal.
-Natural flowing language works MUCH better than comma-separated tag lists.
+  // Build starred examples section if any
+  let starredSection = "";
+  if (starred && starred.length > 0) {
+    const examples = starred.slice(0, 3).map((s, i) =>
+      `Starred Example ${i + 1}:\n"${s.craftedPrompt}"`
+    ).join("\n\n");
+    starredSection = `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+YOUR PREVIOUS BEST PROMPTS (${starred.length} saved):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+These are prompts you previously starred as high quality. Match their style, precision, and level of detail.
+
+${examples}
+`;
+  }
+
+  return `You write prompts for a 3D-print reference image generator.
+Style is ALWAYS: single object, white background, product photography, clean edges.
 
 DATA:
 - Object: ${d.name}
-- Asset type: ${d.assetType}
 ${d.color ? `- Color: ${d.color}` : ""}
 ${d.material ? `- Material: ${d.material}` : ""}
-${d.shape ? `- Overall shape: ${d.shape}` : ""}
+${d.shape ? `- Shape: ${d.shape}` : ""}
 ${d.dims ? `- Size: ${d.dims}` : ""}
 ${d.surf ? `- Surface: ${d.surf}` : ""}
-${d.edge ? `- Edge treatment: ${d.edge}` : ""}
-${d.style ? `- Design style: ${d.style}` : ""}
-${d.comp ? `- Component details: ${d.comp}` : ""}
-${d.viewAngle ? `- View angle: ${d.viewAngle}` : ""}
+${d.edge ? `- Edge: ${d.edge}` : ""}
+${d.style ? `- Style: ${d.style}` : ""}
+${d.comp ? `- Components: ${d.comp}` : ""}
+${d.viewAngle ? `- View: ${d.viewAngle}` : ""}
 ${d.pose ? `- Pose: ${d.pose}` : ""}
 ${d.useEnv ? `- Environment: ${d.useEnv}` : ""}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-REFERENCE EXAMPLE (${fewShot.label}):
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Study this example for style, level of detail, and spatial precision:
+REFERENCE (${fewShot.label}):
 ${fewShot.example}
+${starredSection}
+TASK:
+1. Write ONE flowing English sentence (~150-200 words) describing this object for a 3D-print reference image generator.
+   - FIRST 20 WORDS must contain: color, material, object name, and overall shape — these are weighted highest by the model
+   - Describe WHERE each part is with exact spatial language: "at the top front face", "centered on the left side panel", "along the bottom edge"
+   - Use specific measurements from the data (e.g. "400mm wide by 300mm tall")
+   - Describe surface finish precisely: "smooth matte", "fine ribbed texture", "glossy polished"
+   - Use hard-surface geometry language: "crisp edges", "clean bevels", "sharp corners", "flat faces"
+   - Natural flowing language — never use "various", "multiple", "some", "several"
+   - End with: "single object isolated on pure white background, studio soft even lighting, product photography, 3D render quality"
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-STEP 1 — Draft the positive prompt (~200-250 words):
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Write ONE flowing sentence-chain describing this object for image generation.
+2. Generate a NEGATIVE prompt that prevents bad generations of THIS object.
+   - ALWAYS start with: text, watermark, logo, multiple objects, two objects, duplicate, clone, background clutter, blur, distortion, depth of field, harsh shadows, bad lighting, dark, underexposed, overexposed, low quality, jpeg artifacts, rendering error, floating, crooked, tilted
+   - Add 10-15 object-specific negatives:
+     * Wrong materials that would ruin this specific object
+     * Wrong colors that would clash (deny opposite colors)
+     * Wrong geometry (deny: deformed, warped, melted, squashed, stretched, asymmetrical)
+     * Missing or extra parts (deny: missing [key component], extra [component], wrong number of [parts])
+     * Wrong surface (deny the opposite of each surface quality in the spec)
+   - Comma-separated, under 400 chars
 
-RULES:
-- ONE flowing sentence-chain connected by commas — NOT bullet points
-- Describe exactly WHERE each feature is (spatial positioning: "at the top", "on the front face",
-  "centered on each drawer", "near the bottom edge")
-- Describe each visible component with its own material, color, and shape
-- Write in natural English with visual adjectives — never "various", "multiple", "some", "several"
-- Lead with the most visually striking elements for emphasis
-- Keep beneficial tokens: "single object", "white background", "product photography"
-- Match the level of spatial detail shown in the reference example
-- Under 250 words
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-STEP 2 — Self-Critique:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Review your draft. Answer honestly:
-a) Are ALL components from the data described with their exact spatial position?
-b) Are ALL materials and colors mentioned for each component?
-c) Any vague filler words (various, multiple, some, several)?
-d) What would a flow-matching model (CFG=1.0) likely misinterpret or get wrong?
-e) Is the most important visual info (color + material + shape + key features)
-   in the first ~150 characters for multi-view compatibility?
-f) Does the style and level of detail match the reference example?
-
-If you find issues, FIX them in your final positive prompt.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-STEP 3 — Generate the negative prompt:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Based on your critique (especially point d), generate a negative prompt that
-specifically targets what could go wrong with THIS positive prompt.
-
-Base negatives (ALWAYS include): text, watermark, logo, multiple objects, two, duplicate,
-clone, background clutter, blur, distortion, harsh shadows, bad lighting
-
-Now add 8-15 object-specific negatives. Think adversarially:
-- If material is "${d.material || "X"}", what wrong materials would ruin it?
-- If color is "${d.color || "Y"}", what wrong colors would clash?
-- If shape is "${d.shape || "Z"}", what wrong shapes/geometry would look bad?
-- If surface is "${d.surf || "W"}", what wrong surfaces would contradict?
-- What structural errors could happen (missing components, wrong proportions)?
-- What view angle errors could happen?
-
-Good examples of object-specific negatives:
-- White wooden cabinet → "dark colors, neon colors, metal handles, glass panels, transparent, glossy reflection, wood grain mismatch, uneven gaps, misaligned drawers, missing drawer, extra drawer"
-- Smooth plastic tray → "rough texture, wood grain, metallic reflection, glossy highlights, sharp corners, irregular edges, warped surface, curved bottom"
-- Metal bracket → "plastic texture, wood, rust, tarnish, scratches, bent, deformed, rounded edges, organic shape"
-- Organic shape → "sharp corners, angular, geometric, blocky, square edges, rigid, straight lines, mechanical, industrial"
-
-Rules:
-- Comma-separated English
-- Start with the base negatives, then add targeted ones
-- Under 350 characters total
-- Every negative should be something that could realistically go wrong with THIS object
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-STEP 4 — Final Output:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Output ONLY valid JSON (no markdown fences, no extra text):
-{"positive": "the final refined positive prompt", "negative": "comma, separated, negative, prompt"}`;
+Output ONLY valid JSON: {"positive": "...", "negative": "..."}`;
 }
 
 // ── Streaming-Compatible Prompts ────────────────────────────────────
@@ -214,7 +191,7 @@ Output ONLY valid JSON (no markdown fences, no extra text):
  * Build the positive polish prompt for STREAMING mode.
  * Includes a few-shot example matched to the asset type.
  */
-export function buildPositivePrompt(d: PolishData): string {
+export function buildPositivePrompt(d: PolishData, starred?: StarredExample[]): string {
   const fewShot = getFewShotExample(d.assetType);
 
   return `You are generating prompts for Z-Image-Turbo, a flow-matching image model (CFG=1.0).
@@ -236,7 +213,10 @@ ${d.comp ? `- Component details: ${d.comp}` : ""}
 
 REFERENCE EXAMPLE (${fewShot.label} — study the style and spatial precision):
 ${fewShot.example}
-
+${starred && starred.length > 0 ? `
+YOUR PREVIOUS BEST PROMPTS (${starred.length} saved):
+${starred.slice(0, 3).map((s, i) => `"${s.craftedPrompt}"`).join("\n")}
+` : ""}
 Rules:
 - ONE flowing sentence-chain connected by commas — NOT bullet points
 - Describe exactly WHERE each feature is (spatial positioning: "at the top", "on the front face")

@@ -109,6 +109,7 @@ model PromptVersion {
   isApproved      Boolean  @default(false)
   feedback        String   @default("")   // User feedback for iteration
   clarityScore    Float    @default(0.0)  // 0.0 - 1.0 how clear the prompt is
+  starred         Boolean  @default(false) // User saved as quality example
   createdAt       DateTime @default(now())
 
   project          Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)

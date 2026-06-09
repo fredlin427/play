@@ -67,6 +67,8 @@ function CreatePageInner() {
   // Result
   const [result, setResult] = useState<{id?:string;content?:string;craftedPrompt:string;negativePrompt:string}|null>(null);
   const [copied, setCopied] = useState(false);
+  const [starred, setStarred] = useState(false);
+  const [starLoading, setStarLoading] = useState(false);
   const [genLoading, setGenLoading] = useState(false);
   const [generatedImages, setGeneratedImages] = useState<Array<{id:string;imageUrl:string;viewLabel?:string}>>([]);
   const [genProgress, setGenProgress] = useState<{current:number;total:number}|null>(null);
@@ -222,14 +224,19 @@ function CreatePageInner() {
           sketchDesc = sketchNotes || "Hand-drawn sketch";
         }
 
+        // User notes always override vision model guesses for object identity
+        if (sketchNotes && sketchDesc && sketchDesc !== sketchNotes) {
+          sketchDesc = sketchNotes + " (sketch analysis: " + sketchDesc.slice(0, 80) + ")";
+        }
+
         // Step 2: Show analysis result to user
         const zh = (convLang || cl) === "zh";
         setMsgs(prev=>[...prev, {role:"ai",text:zh
           ? `🔍 我分析了你的草圖：${sketchDesc.slice(0,150)}...`
           : `🔍 I analyzed your sketch: ${sketchDesc.slice(0,150)}...`}]);
 
-        // Step 3: If vision model has questions, ask them FIRST before extract
-        if (sketchQuestions.length > 0) {
+        // Step 3: If vision model has questions and no notes provided, ask them before extract
+        if (sketchQuestions.length > 0 && !sketchNotes) {
           const mappedQs = sketchQuestions.map((q, i) => ({
             field: i === 0 ? "material" : i === 1 ? "dimensions" : i === 2 ? "shape" : "details",
             question: q.question,
@@ -603,6 +610,7 @@ function CreatePageInner() {
       await readSSEStream(res, (data) => {
         if (data.done) {
           setResult({ id: data.id as string || "", craftedPrompt: data.positive as string, negativePrompt: (data.negative as string) || "" });
+          setStarred(false);
           recordVersion(data.positive as string, (data.negative as string) || "", cl==="zh"?"初始版本":"Initial");
         } else if (data.token) {
           setResult(prev => prev ? { ...prev, craftedPrompt: data.full as string } : { id: "", craftedPrompt: data.full as string, negativePrompt: "" });
@@ -627,6 +635,7 @@ function CreatePageInner() {
       await readSSEStream(res, (data) => {
         if (data.done) {
           setResult({ id: (data.id as string) || "", craftedPrompt: data.positive as string, negativePrompt: (data.negative as string) || "" });
+          setStarred(false);
           recordVersion(data.positive as string, (data.negative as string) || "", cl==="zh"?"文字修改":"Text edit");
         } else if (data.token) {
           setResult(prev => prev ? { ...prev, craftedPrompt: data.full as string } : { id: "", craftedPrompt: data.full as string, negativePrompt: "" });
@@ -636,6 +645,26 @@ function CreatePageInner() {
       setMsgs(prev=>[...prev,{role:"ai",text:cl==="zh"?"✨ 已根據意見更新提示詞":"✨ Prompt updated based on your feedback"}]);
     } catch (err: any) { setError(`Iterate: ${err.message||String(err)}`); setErrorRetry(()=>handleIterate); }
     finally { setLoading(false); }
+  };
+
+  // ── Star prompt as quality example ──
+  const handleStar = async () => {
+    if (!result?.id || starLoading) return;
+    setStarLoading(true);
+    try {
+      const res = await fetch("/api/prompt/star", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ promptVersionId: result.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setStarred(data.starred);
+    } catch (err: any) {
+      console.warn("[Star] Failed:", err.message);
+    } finally {
+      setStarLoading(false);
+    }
   };
 
   // ── Vision Analysis ──
@@ -924,8 +953,8 @@ function CreatePageInner() {
             </div>
 
             {mode==="sketch"&&<><SketchPad onSave={(dataUrl)=>{setSketchDataUrl(dataUrl);setUploadedImages([{id:"sketch",fileName:"sketch.png",previewUrl:dataUrl}]);}}/><Textarea value={sketchNotes} onChange={e=>setSketchNotes(e.target.value)} placeholder={toggleLang==="zh"?"備註（形狀、尺寸、材質...）":"Notes (shape, size, material...)"} rows={2} className="resize-none text-sm rounded-xl"/></>}
-            {mode==="image"&&<ReferenceImageUploader projectId={pid} onUpload={(imgs)=>{setUploadedImages(imgs);if(imgs.length>0 && !input.trim()) setInput(cl==="zh"?"請根據這些參考圖生成一個...":"Generate a 3D-printable object based on these reference images...");}}/>}
-            {mode==="model"&&<ReferenceModelUploader projectId={pid} onUpload={(models)=>{setUploadedModels(models);if(models.length>0 && !input.trim()) setInput(cl==="zh"?"請根據這個3D模型生成...":"Generate a matching object based on this 3D model reference...");}}/>}
+            {mode==="image"&&<ReferenceImageUploader projectId={pid} onUpload={(imgs)=>{setUploadedImages(imgs);if(imgs.length>0 && !input.trim()) setInput(cl==="zh"?"請根據這些參考圖生成一個...":"Generate a 3D-printable object based on these reference images...");}} onProjectCreated={(newPid)=>{if(!pid) setPid(newPid);}}/>}
+            {mode==="model"&&<ReferenceModelUploader projectId={pid} onUpload={(models)=>{setUploadedModels(models);if(models.length>0 && !input.trim()) setInput(cl==="zh"?"請根據這個3D模型生成...":"Generate a matching object based on this 3D model reference...");}} onProjectCreated={(newPid)=>{if(!pid) setPid(newPid);}}/>}
 
             {/* File status badge */}
             {mode!=="text" && (sketchDataUrl||uploadedImages.length>0||uploadedModels.length>0) && (
@@ -1288,6 +1317,11 @@ function CreatePageInner() {
                           {t(`Versions (${promptVersions.length})`,`版本 (${promptVersions.length})`)}
                         </Button>
                       )}
+                      <Button variant="ghost" size="sm" onClick={handleStar} disabled={starLoading}
+                        className={`rounded-xl text-xs ${starred ? "text-[#F59E0B] hover:text-[#D97706]" : "text-[#B8A898] hover:text-[#F59E0B]"}`}
+                        title={starred ? (cl==="zh"?"已標記為精選":"Starred as example") : (cl==="zh"?"標記為精選，供下次生成參考":"Star as quality example for future generations")}>
+                        {starred ? <><Sparkles className="w-3.5 h-3.5 fill-[#F59E0B]"/> {t("Starred","已標記")}</> : <><Sparkles className="w-3.5 h-3.5"/> {t("Star","標記")}</>}
+                      </Button>
                       <Button variant="ghost" size="sm" onClick={()=>{navigator.clipboard.writeText(result.craftedPrompt);setCopied(true);setTimeout(()=>setCopied(false),2000);}}
                         className="rounded-xl text-xs text-[#B8A898] hover:text-[#C4823B]">
                         {copied?<><Check className="w-3.5 h-3.5 text-emerald-500"/> {t("Copied","已複製")}</>:<><Copy className="w-3.5 h-3.5"/> {t("Copy","複製")}</>}

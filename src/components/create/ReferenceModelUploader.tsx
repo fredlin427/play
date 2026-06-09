@@ -15,12 +15,13 @@ interface UploadedModel {
 interface ReferenceModelUploaderProps {
   projectId: string | null;
   onUpload: (models: UploadedModel[]) => void;
+  onProjectCreated?: (projectId: string) => void;
 }
 
 const MAX_SIZE = 50 * 1024 * 1024; // 50MB
 const ALLOWED_EXTENSIONS = [".stl", ".obj", ".step", ".stp"];
 
-export function ReferenceModelUploader({ projectId, onUpload }: ReferenceModelUploaderProps) {
+export function ReferenceModelUploader({ projectId, onUpload, onProjectCreated }: ReferenceModelUploaderProps) {
   const [models, setModels] = useState<UploadedModel[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -28,12 +29,26 @@ export function ReferenceModelUploader({ projectId, onUpload }: ReferenceModelUp
   const inputRef = useRef<HTMLInputElement>(null);
 
   const processFiles = useCallback(async (files: FileList) => {
-    if (!projectId) {
-      setError("Create project first before uploading");
-      return;
+    setError("");
+
+    // Auto-create project if needed
+    let pid: string = projectId || "";
+    if (!pid) {
+      try {
+        const r = await fetch("/api/projects", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: "New Design", description: "3D model reference" }),
+        });
+        const data = await r.json();
+        pid = data.id as string;
+        onProjectCreated?.(pid);
+      } catch {
+        setError("Failed to create project. Please type a description first.");
+        return;
+      }
     }
 
-    setError("");
     const newModels: UploadedModel[] = [];
 
     for (const file of Array.from(files)) {
@@ -70,7 +85,7 @@ export function ReferenceModelUploader({ projectId, onUpload }: ReferenceModelUp
       try {
         const formData = new FormData();
         formData.append("file", file);
-        formData.append("projectId", projectId);
+        formData.append("projectId", pid);
 
         const res = await fetch("/api/upload/model", {
           method: "POST",
@@ -205,11 +220,6 @@ export function ReferenceModelUploader({ projectId, onUpload }: ReferenceModelUp
         </div>
       )}
 
-      {!projectId && (
-        <p className="text-xs text-amber-600 bg-amber-50 rounded px-3 py-2">
-          Create the project first, then upload reference models.
-        </p>
-      )}
     </div>
   );
 }

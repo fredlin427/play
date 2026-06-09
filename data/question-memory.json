@@ -900,5 +900,77 @@
     "wasAnswered": true,
     "wasCustomAnswer": false,
     "timestamp": 1780980269710
+  },
+  {
+    "assetType": "prop",
+    "objectName": "橡皮擦",
+    "field": "dimensions",
+    "question": "精確尺寸？請輸入 長x寬x高（mm），例如 400x300x200mm",
+    "options": [
+      "100x100x100mm",
+      "200x150x100mm",
+      "300x200x150mm",
+      "400x300x200mm",
+      "不確定"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780995410357
+  },
+  {
+    "assetType": "prop",
+    "objectName": "橡皮擦",
+    "field": "color",
+    "question": "顏色偏好？如有不同部位請分別說明",
+    "options": [
+      "白色",
+      "灰色",
+      "黑色",
+      "藍色",
+      "透明/半透明",
+      "雙色搭配",
+      "不確定"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780995410357
+  },
+  {
+    "assetType": "prop",
+    "objectName": "橡皮擦",
+    "field": "shape",
+    "question": "主體是什麼形狀？描述整體輪廓",
+    "options": [
+      "矩形/方形盒",
+      "圓柱形",
+      "球形/圓頂",
+      "不規則/有機形",
+      "托盤狀 (淺)",
+      "L形/支架形",
+      "不確定"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780995410357
+  },
+  {
+    "assetType": "prop",
+    "objectName": "橡皮擦",
+    "field": "details",
+    "question": "有哪些子元件/部件？請逐一列舉並描述位置",
+    "options": [
+      "抽屜/隔間",
+      "門/面板",
+      "把手/握柄",
+      "輪子/腳座",
+      "層架/托盤",
+      "鉸鏈/滑軌",
+      "掛鉤/支架",
+      "無子元件",
+      "不確定"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780995431401
   }
 ]

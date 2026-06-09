@@ -577,18 +577,18 @@ export function getMaxRounds(assetType: string): number {
   const key = ASSET_TYPE_ALIASES[assetType.toLowerCase()] || "unknown";
   switch (key) {
     case "medical":
-      return 10; // Deep clinical requirements
+      return 12; // Deep clinical: sterilization, patient contact, environment, cleaning, biocompatibility, dimensions, color, components, surface, edge, style
     case "robot":
-      return 9;  // Many mechanical details
+      return 11; // Mechanical: joints, load, precision, assembly, moving parts, dimensions, material look, color, surface, edge, style
     case "furniture":
-      return 9;  // Structural + aesthetic details
+      return 11; // Structural: load-bearing, durability, assembly, dimensions, color, surface, components, edge, style, use
     case "jewelry":
-      return 8;  // Many fine details
+      return 10; // Fine detail: metal type, gem, setting, finish, size, style, clasp, color, surface
     case "product":
-      return 8;  // Components + material options
+      return 10; // Functional needs, load, heat, water, food, flexibility, dimensions, shape, color, components
     case "character":
-      return 7;  // Pose + style + color
+      return 9;  // Pose, proportion, style, color, surface detail, size, base, expression
     default:
-      return 5;
+      return 8;
   }
 }

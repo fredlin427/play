@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { buildSDPrompt } from "@/lib/agents/prompt-template";
 import {
   extractPolishData, buildJointPrompt, JointCraftSchema,
-  cleanPositive, validatePolish, buildRepairPrompt,
+  cleanPositive,
 } from "@/lib/agents/prompt-craft";
-import { callLLMStructured, callLLM } from "@/lib/llm";
+import type { StarredExample } from "@/lib/agents/prompt-craft";
+import { callLLMStructured } from "@/lib/llm";
 import { prisma } from "@/lib/prisma";
 import { detectLang } from "@/lib/i18n";
 import type { Lang } from "@/lib/i18n";
@@ -33,62 +34,55 @@ export async function POST(request: NextRequest) {
       console.log("[Craft] Feedback applied:", feedbackText.slice(0, 80));
     }
 
-    // 3. Single LLM call: joint positive + negative with chain-of-thought self-critique
+    // 3. Fetch user-starred prompts to use as extra few-shot examples
+    let starredExamples: StarredExample[] = [];
+    try {
+      const starred = await prisma.promptVersion.findMany({
+        where: { starred: true },
+        select: { id: true, craftedPrompt: true, negativePrompt: true },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+      });
+      starredExamples = starred;
+      if (starred.length > 0) {
+        console.log(`[Craft] Using ${starred.length} starred prompts as examples`);
+      }
+    } catch (e) {
+      console.warn("[Craft] Failed to fetch starred prompts:", String(e).slice(0, 80));
+    }
+
+    // 4. Single LLM call — compact prompt, no validation/repair overhead
     let finalPositive = sd.positive;
     let finalNegative = sd.negative;
 
     try {
       const result = await callLLMStructured(
-        "You are a prompt engineer specializing in flow-matching image generation models (Z-Image-Turbo, CFG=1.0). You generate polished positive AND negative prompts in a single pass with self-critique. Output ONLY valid JSON.",
-        buildJointPrompt(d),
+        "You are a 3D-print reference image prompt engineer. Output ONLY valid JSON.",
+        buildJointPrompt(d, starredExamples),
         JointCraftSchema,
         { positive: sd.positive, negative: sd.negative },
         "joint-craft",
-        { temperature: 0.5, maxTokens: 800 }
+        { temperature: 0.4, maxTokens: 600 }
       );
 
-      let pos = cleanPositive(result.data.positive);
-      let neg = result.data.negative.trim();
+      const pos = cleanPositive(result.data.positive);
+      const neg = result.data.negative.trim();
 
-      // 4. Validate quality — if issues found, attempt ONE repair
-      const validation = validatePolish(pos, d);
-      if (!validation.passed && validation.score < 0.7) {
-        console.warn("[Craft] Validation failed (score=" + validation.score.toFixed(2) + "):",
-          validation.issues.map(i => i.message).join("; "));
-
-        try {
-          const repairResult = await callLLM(
-            "You are a prompt engineer. Fix the quality issues in the previous prompt. Output ONLY the corrected prompt — no JSON, no commentary.",
-            buildRepairPrompt(d, pos, validation.issues),
-            { temperature: 0.4, maxTokens: 600 }
-          );
-          const repaired = cleanPositive((repairResult.content || "").trim());
-          const revalidation = validatePolish(repaired, d);
-          if (revalidation.score > validation.score && repaired.length > 50) {
-            pos = repaired;
-            console.log("[Craft] Repair accepted (score: " + validation.score.toFixed(2) + " → " + revalidation.score.toFixed(2) + ")");
-          } else {
-            console.warn("[Craft] Repair did not improve (score: " + validation.score.toFixed(2) + " → " + revalidation.score.toFixed(2) + "), keeping original");
-          }
-        } catch (e) {
-          console.warn("[Craft] Repair call failed:", String(e).slice(0, 100));
-        }
-      }
-
-      // Accept if passes validation or score is decent
+      // Simple acceptance: just check length is reasonable
       if (pos.length > 30 && pos.length < 1500) {
         finalPositive = pos;
-        console.log("[Craft] Joint positive OK:", finalPositive.slice(0, 80) + "...");
+        console.log("[Craft] Positive OK:", finalPositive.slice(0, 80) + "...");
+      } else {
+        console.warn("[Craft] Positive rejected — keeping template fallback");
       }
-      if (neg.length > 15 && neg.length < 500) {
+      if (neg.length > 10 && neg.length < 500) {
         finalNegative = neg;
-        console.log("[Craft] Joint negative OK:", finalNegative.slice(0, 80) + "...");
       }
     } catch (e) {
-      console.warn("[Craft] Joint polish failed:", String(e).slice(0, 100));
+      console.warn("[Craft] LLM call failed, using template fallback:", String(e).slice(0, 100));
     }
 
-    // 5. Save to DB
+    // 4. Save to DB
     const ver = ((await prisma.promptVersion.findFirst({ where: { projectId }, orderBy: { version: "desc" } }))?.version || 0) + 1;
     const pv = await prisma.promptVersion.create({
       data: {

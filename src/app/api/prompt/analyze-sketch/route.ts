@@ -24,38 +24,30 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const prompt = `You are analyzing a hand-drawn sketch for 3D printing. The user drew this to show what object they want to create.
+    // Determine language from notes (crude but effective)
+    const hasChinese = /[一-鿿]/.test(notes || "");
+    const lang = hasChinese ? "zh" : "en";
 
-Describe the object and identify what information is MISSING or UNCERTAIN that would be needed for 3D printing.
+    const prompt = lang === "zh"
+      ? `這是一張手繪草圖，用戶想 3D 列印這個物件。
 
-1. What is the object? (name it)
-2. What is its overall shape? (rectangular, cylindrical, organic, flat tray, box-like, L-shaped, etc.)
-3. What are the key visible features? (compartments, holes, handles, drawers, legs, curves, etc.)
-4. What approximate size does it look like? (small handheld, desktop-sized, large, etc.)
-5. What material does it look like? (plastic, wood, metal, etc.)
-6. Any special structural details?
+請簡短回答：
+1. 這是什麼物件？（只給一個最可能的答案，不確定就說"不清楚"）
+2. 整體是什麼形狀？（矩形、圓柱、有機形、托盤、L形...）
+${notes ? `用戶備註：${notes}` : ""}
 
-Then identify 2-4 things that are UNCLEAR from the sketch and should be confirmed with the user. For each:
-- A specific question (in the user's language based on the notes)
-- 3-5 multiple-choice options
+輸出 JSON：
+{"object":"物件名稱","shape":"形狀","confidence":"high/medium/low"}`
 
-${notes ? `The user added these notes: "${notes}" — incorporate them.` : ""}
+      : `This is a hand-drawn sketch of an object the user wants to 3D print.
 
-Output ONLY valid JSON (no markdown fences):
-{
-  "description": "A flowing English paragraph describing the object (under 150 words)",
-  "questions": [
-    {"question": "What material?", "options": ["PLA plastic", "PETG", "Wood", "Metal", "Unsure"]},
-    {"question": "Approximate size?", "options": ["Under 100mm", "100-300mm", "300-600mm", "Over 600mm", "Unsure"]}
-  ]
-}
+Answer briefly:
+1. What object is this? (give ONE best guess, say "unclear" if unsure)
+2. What overall shape? (rectangular, cylindrical, organic, tray, L-shaped, etc.)
+${notes ? `User notes: ${notes}` : ""}
 
-Rules:
-- description MUST be in English (for the prompt pipeline)
-- questions should be in the SAME LANGUAGE as the user's notes (Chinese notes → Chinese questions, English notes → English questions)
-- Only ask about things that are genuinely unclear from the sketch
-- Each question must have 3-5 specific options + "Unsure/不確定"
-- If everything is clear, questions can be an empty array`;
+Output JSON:
+{"object":"object name","shape":"shape description","confidence":"high/medium/low"}`;
 
 
     const result = await callVisionLLM(imageBase64, "image/png", prompt, {
@@ -74,6 +66,7 @@ Rules:
     // Parse JSON from vision model response
     let description = "";
     let questions: Array<{ question: string; options: string[] }> = [];
+    const zh = lang === "zh";
 
     try {
       const cleaned = (result.content || "")
@@ -82,16 +75,42 @@ Rules:
       const end = cleaned.lastIndexOf("}");
       if (start >= 0 && end > start) {
         const parsed = JSON.parse(cleaned.slice(start, end + 1));
-        description = parsed.description || "";
-        questions = parsed.questions || [];
+
+        // Handle new compact format
+        if (parsed.object && parsed.shape) {
+          const obj = parsed.object.toLowerCase();
+          const isUnclear = obj === "unclear" || obj === "不清楚" || parsed.confidence === "low";
+
+          description = isUnclear
+            ? (notes || "Hand-drawn sketch")
+            : `A ${parsed.shape} ${parsed.object}, hand-drawn sketch reference.`;
+
+          // If confidence is low or unclear, ask confirmatory questions
+          if (isUnclear) {
+            questions = [
+              { question: zh ? "你畫的是什麼物件？" : "What object did you draw?",
+                options: zh
+                  ? ["容器/收納盒", "工具/器械", "家具", "支架/底座", "裝飾品", "不確定"]
+                  : ["Container/Box", "Tool/Instrument", "Furniture", "Bracket/Stand", "Decorative", "Unsure"] },
+            ];
+          }
+        } else {
+          // Handle old format backward compatibility
+          description = parsed.description || "";
+          questions = parsed.questions || [];
+        }
       }
     } catch {
-      // Fallback: use raw content as description
       description = (result.content || "").trim();
+      // If vision model just returned text (not JSON), treat it as description
+      if (description.length > 10 && !description.includes("{")) {
+        // Good — use it directly
+      } else {
+        description = notes || "Hand-drawn sketch";
+      }
     }
 
-    console.log("[Analyze Sketch] Description:", description.slice(0, 100) + "...");
-    console.log("[Analyze Sketch] Questions:", questions.length);
+    console.log("[Analyze Sketch] Object:", description.slice(0, 100) + "...");
 
     return NextResponse.json({
       description: description || notes || "Unrecognized sketch",
