@@ -1,0 +1,73 @@
+# ──────────────────────────────────────────────────────────────
+# 醫院 3D 列印 AI 助手 — Docker Compose
+# ──────────────────────────────────────────────────────────────
+# Quick start: docker compose up -d
+#
+# Individual services (for non-Docker local dev):
+#   Terminal 1: ollama serve
+#   Terminal 2: cd sd_service && python main.py
+#   Terminal 3: npm run dev
+# ──────────────────────────────────────────────────────────────
+
+services:
+  # ── Next.js App ───────────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - LLM_PROVIDER=${LLM_PROVIDER:-local}
+      - LOCAL_LLM_BASE_URL=http://ollama:11434/v1
+      - LOCAL_LLM_MODEL=${LOCAL_LLM_MODEL:-qwen2.5:7b}
+      - SD_SERVICE_URL=http://sd-service:8001
+      - VISION_ENABLED=${VISION_ENABLED:-false}
+      - DATABASE_URL=file:./data/dev.db
+    volumes:
+      - ./uploads:/app/uploads
+      - ./data:/app/data
+    depends_on:
+      - ollama
+      - sd-service
+    restart: unless-stopped
+
+  # ── Ollama (LLM) ──────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_KEEP_ALIVE=24h
+      - OLLAMA_HOST=0.0.0.0
+    restart: unless-stopped
+    # To pull models after first start:
+    #   docker compose exec ollama ollama pull qwen2.5:7b
+
+  # ── Z-Image-Turbo (SD) ───────────────────────────────────
+  # NOTE: Requires NVIDIA GPU + nvidia-container-toolkit.
+  # Remove the `deploy` section to run on CPU only.
+  sd-service:
+    build:
+      context: ./sd_service
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      - ZIMAGE_DIR=/app/models
+    volumes:
+      - ./uploads:/app/uploads
+      - ${ZIMAGE_DIR:-./models}:/app/models:ro
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+
+volumes:
+  ollama_data:

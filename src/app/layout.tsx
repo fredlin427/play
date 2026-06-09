@@ -13,9 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "3D Print AI — From Idea to STL",
+  title: "MedForge — AI 3D Print Design Platform",
   description:
-    "Describe your idea, AI crafts the perfect prompt, generates 2D images, converts to 3D models. Export print-ready STL files.",
+    "Describe your idea. AI crafts the perfect prompt, generates high-quality images, and prepares print-ready designs.",
 };
 
 export default function RootLayout({

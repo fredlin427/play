@@ -91,6 +91,7 @@ function DashboardInner() {
           </button>
           <h1 className="text-lg font-semibold" style={{ color: '#2C2416' }}>{t("My Projects", "我的專案")}</h1>
           <span className="text-sm" style={{ color: '#B8A898' }}>({projects.length})</span>
+          <span className="text-[10px] px-2 py-0.5 rounded-full" style={{color:'#B8A898',background:'rgba(196,130,59,0.06)'}}>MDSSC</span>
           <div className="flex-1" />
           <button onClick={() => setLang(lang === "zh" ? "en" : "zh")} className="text-sm transition-colors" style={{ color: '#8B7355' }}
             onMouseEnter={e => (e.currentTarget.style.color = '#C4823B')} onMouseLeave={e => (e.currentTarget.style.color = '#8B7355')}>

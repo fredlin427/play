@@ -458,5 +458,447 @@
     "wasAnswered": true,
     "wasCustomAnswer": false,
     "timestamp": 1780910879845
+  },
+  {
+    "assetType": "medical",
+    "objectName": "醫療床",
+    "field": "dimensions",
+    "question": "大約尺寸是多少？（醫療器械尺寸至關重要）",
+    "options": [
+      "50x50x50mm (微型器械)",
+      "100x50x150mm (手持)",
+      "200x150x300mm (中型)",
+      "400x300x600mm (大型)",
+      "600x600x600mm+",
+      "不確定"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780969319490
+  },
+  {
+    "assetType": "medical",
+    "objectName": "醫療床",
+    "field": "details",
+    "question": "有哪些子元件？請逐一說明每個部件的位置和功能",
+    "options": [
+      "抽屜/隔間",
+      "門/面板 (鎖定?)",
+      "把手/握柄",
+      "醫療級腳輪",
+      "層架/托盤",
+      "可調節支架",
+      "線纜管理",
+      "無子元件",
+      "不確定"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780969319490
+  },
+  {
+    "assetType": "medical",
+    "objectName": "醫療床",
+    "field": "color",
+    "question": "顏色？（醫療環境通常有標準）",
+    "options": [
+      "白色 (醫療標準)",
+      "淺灰",
+      "淺藍/手術藍",
+      "不鏽鋼色",
+      "不確定"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780969319490
+  },
+  {
+    "assetType": "medical",
+    "objectName": "手術刀",
+    "field": "dimensions",
+    "question": "大約尺寸是多少？（醫療器械尺寸至關重要）",
+    "options": [
+      "50x50x50mm (微型器械)",
+      "100x50x150mm (手持)",
+      "200x150x300mm (中型)",
+      "400x300x600mm (大型)",
+      "600x600x600mm+",
+      "不確定"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780976211102
+  },
+  {
+    "assetType": "medical",
+    "objectName": "手術刀",
+    "field": "details",
+    "question": "有哪些子元件？請逐一說明每個部件的位置和功能",
+    "options": [
+      "抽屜/隔間",
+      "門/面板 (鎖定?)",
+      "把手/握柄",
+      "醫療級腳輪",
+      "層架/托盤",
+      "可調節支架",
+      "線纜管理",
+      "無子元件",
+      "不確定"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780976211102
+  },
+  {
+    "assetType": "medical",
+    "objectName": "手術刀",
+    "field": "color",
+    "question": "顏色？（醫療環境通常有標準）",
+    "options": [
+      "白色 (醫療標準)",
+      "淺灰",
+      "淺藍/手術藍",
+      "不鏽鋼色",
+      "不確定"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780976211102
+  },
+  {
+    "assetType": "fruit",
+    "objectName": "蘋果",
+    "field": "dimensions",
+    "question": "大約尺寸？",
+    "options": [
+      "50x50x50mm",
+      "200x150x100mm",
+      "400x300x200mm",
+      "不確定"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780977654489
+  },
+  {
+    "assetType": "fruit",
+    "objectName": "蘋果",
+    "field": "shape",
+    "question": "蘋果是什麼形狀？",
+    "options": [
+      "矩形盒",
+      "圓柱形",
+      "托盤狀",
+      "L形",
+      "有機形",
+      "不確定"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780977654489
+  },
+  {
+    "assetType": "fruit",
+    "objectName": "蘋果",
+    "field": "surface",
+    "question": "蘋果的表面質感？",
+    "options": [
+      "光滑啞光",
+      "亮光",
+      "磨砂",
+      "紋理",
+      "不確定"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780977654489
+  },
+  {
+    "assetType": "fruit",
+    "objectName": "蘋果",
+    "field": "dimensions",
+    "question": "大約尺寸？",
+    "options": [
+      "50x50x50mm",
+      "200x150x100mm",
+      "400x300x200mm",
+      "不確定"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780977673946
+  },
+  {
+    "assetType": "fruit",
+    "objectName": "蘋果",
+    "field": "shape",
+    "question": "蘋果是什麼形狀？",
+    "options": [
+      "矩形盒",
+      "圓柱形",
+      "托盤狀",
+      "L形",
+      "有機形",
+      "不確定"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780977673946
+  },
+  {
+    "assetType": "fruit",
+    "objectName": "蘋果",
+    "field": "surface",
+    "question": "蘋果的表面質感？",
+    "options": [
+      "光滑啞光",
+      "亮光",
+      "磨砂",
+      "紋理",
+      "不確定"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780977673946
+  },
+  {
+    "assetType": "product",
+    "objectName": "水杯",
+    "field": "dimensions",
+    "question": "精確尺寸？請輸入 長x寬x高（mm），例如 400x300x200mm",
+    "options": [
+      "100x100x100mm",
+      "200x150x100mm",
+      "300x200x150mm",
+      "400x300x200mm",
+      "不確定"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780977965688
+  },
+  {
+    "assetType": "product",
+    "objectName": "水杯",
+    "field": "color",
+    "question": "顏色偏好？如有不同部位請分別說明",
+    "options": [
+      "白色",
+      "灰色",
+      "黑色",
+      "藍色",
+      "透明/半透明",
+      "雙色搭配",
+      "不確定"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780977965688
+  },
+  {
+    "assetType": "product",
+    "objectName": "水杯",
+    "field": "shape",
+    "question": "主體是什麼形狀？描述整體輪廓",
+    "options": [
+      "矩形/方形盒",
+      "圓柱形",
+      "球形/圓頂",
+      "不規則/有機形",
+      "托盤狀 (淺)",
+      "L形/支架形",
+      "不確定"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780977965688
+  },
+  {
+    "assetType": "product",
+    "objectName": "水杯",
+    "field": "details",
+    "question": "有哪些子元件/部件？請逐一列舉並描述位置",
+    "options": [
+      "抽屜/隔間",
+      "門/面板",
+      "把手/握柄",
+      "輪子/腳座",
+      "層架/托盤",
+      "鉸鏈/滑軌",
+      "掛鉤/支架",
+      "無子元件",
+      "不確定"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780978007658
+  },
+  {
+    "assetType": "container",
+    "objectName": "container",
+    "field": "color",
+    "question": "Color preference? Specify per part if different.",
+    "options": [
+      "White",
+      "Grey",
+      "Black",
+      "Blue",
+      "Transparent/translucent",
+      "Two-tone combo",
+      "Unsure"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780978679863
+  },
+  {
+    "assetType": "container",
+    "objectName": "container",
+    "field": "shape",
+    "question": "What is the main shape? Describe the overall form.",
+    "options": [
+      "Rectangular box",
+      "Cylindrical",
+      "Spherical/dome",
+      "Irregular/Organic",
+      "Tray (shallow)",
+      "L-shaped/bracket",
+      "Unsure"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780978679863
+  },
+  {
+    "assetType": "container",
+    "objectName": "container",
+    "field": "dimensions",
+    "question": "Exact dimensions of the container? (LxWxH mm)",
+    "options": [
+      "100x100x100mm",
+      "200x150x100mm",
+      "400x300x200mm",
+      "Unsure"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780978704282
+  },
+  {
+    "assetType": "container",
+    "objectName": "container",
+    "field": "surface",
+    "question": "Surface finish of the container?",
+    "options": [
+      "Smooth matte",
+      "Glossy",
+      "Frosted",
+      "Textured",
+      "Unsure"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780978704282
+  },
+  {
+    "assetType": "container",
+    "objectName": "container",
+    "field": "components",
+    "question": "What components does the container have?",
+    "options": [
+      "Drawers",
+      "Door/lid",
+      "Handles",
+      "Shelves",
+      "No special parts",
+      "Unsure"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780978704282
+  },
+  {
+    "assetType": "container",
+    "objectName": "container to hold 10 pens",
+    "field": "color",
+    "question": "Color preference? Specify per part if different.",
+    "options": [
+      "White",
+      "Grey",
+      "Black",
+      "Blue",
+      "Transparent/translucent",
+      "Two-tone combo",
+      "Unsure"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780980229065
+  },
+  {
+    "assetType": "container",
+    "objectName": "container to hold 10 pens",
+    "field": "shape",
+    "question": "What is the main shape? Describe the overall form.",
+    "options": [
+      "Rectangular box",
+      "Cylindrical",
+      "Spherical/dome",
+      "Irregular/Organic",
+      "Tray (shallow)",
+      "L-shaped/bracket",
+      "Unsure"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780980229065
+  },
+  {
+    "assetType": "container",
+    "objectName": "container to hold 10 pens",
+    "field": "dimensions",
+    "question": "Exact dimensions of the container to hold 10 pens? (LxWxH mm)",
+    "options": [
+      "100x100x100mm",
+      "200x150x100mm",
+      "400x300x200mm",
+      "Unsure"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780980269710
+  },
+  {
+    "assetType": "container",
+    "objectName": "container to hold 10 pens",
+    "field": "surface",
+    "question": "Surface finish of the container to hold 10 pens?",
+    "options": [
+      "Smooth matte",
+      "Glossy",
+      "Frosted",
+      "Textured",
+      "Unsure"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780980269710
+  },
+  {
+    "assetType": "container",
+    "objectName": "container to hold 10 pens",
+    "field": "components",
+    "question": "What components does the container to hold 10 pens have?",
+    "options": [
+      "Drawers",
+      "Door/lid",
+      "Handles",
+      "Shelves",
+      "No special parts",
+      "Unsure"
+    ],
+    "wasAnswered": true,
+    "wasCustomAnswer": false,
+    "timestamp": 1780980269710
   }
 ]

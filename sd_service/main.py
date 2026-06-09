@@ -9,10 +9,15 @@ Endpoints:
 """
 
 import os
+import sys
 import time
 import asyncio
 import hashlib
 from pathlib import Path
+
+# Force UTF-8 on Windows to handle Chinese prompts
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -102,10 +107,13 @@ async def generate(req: GenerateRequest):
             print(f"[ZImage] Prompt: {req.prompt[:120]}...")
 
             t0 = time.perf_counter()
+            env = os.environ.copy()
+            env["PYTHONUTF8"] = "1"
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env=env,
             )
             try:
                 stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=300)
@@ -123,7 +131,7 @@ async def generate(req: GenerateRequest):
             if returncode is None:
                 raise HTTPException(status_code=500, detail="Process did not exit")
             if returncode != 0:
-                err_text = stderr.decode() if stderr else "Unknown error"
+                err_text = stderr.decode("utf-8", errors="replace") if stderr else "Unknown error"
                 raise HTTPException(status_code=500, detail=f"CLI failed: {err_text[-300:]}")
 
             if not os.path.isfile(out_path):

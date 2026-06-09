@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { LangProvider, useLang } from "@/lib/lang-context";
 import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
@@ -10,6 +10,13 @@ function HomePageInner() {
   const router = useRouter();
   const { lang, setLang, t } = useLang();
   const [langSelected, setLangSelected] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  // Avoid hydration mismatch: SSR always renders "en", client detects real lang
+  useEffect(() => { setMounted(true); }, []);
+
+  // Show nothing during SSR to avoid hydration mismatch
+  if (!mounted) return <main className="min-h-screen" style={{ background: '#FDF8F3' }} />;
 
   if (!langSelected) {
     return (
@@ -18,7 +25,7 @@ function HomePageInner() {
         <div className="text-center space-y-8 px-4 relative z-10">
           <div className="inline-flex items-center gap-3 text-[#C4823B] mb-4">
             <Box className="w-8 h-8" />
-            <span className="text-xl font-light tracking-[0.3em] uppercase">Atelier</span>
+            <span className="text-xl font-light tracking-[0.3em] uppercase">MedForge</span>
           </div>
           <h1 className="text-3xl sm:text-4xl font-light text-[#F5EDE3] mb-2 tracking-wide">
             {t("Choose Your Language", "選擇你的語言")}
@@ -43,7 +50,7 @@ function HomePageInner() {
               </button>
             ))}
           </div>
-          <p className="text-[#5C4A3A] text-xs mt-8">Z-Image-Turbo · Qwen 2.5 · LLaVA</p>
+          <p className="text-[#5C4A3A] text-xs mt-8">MDSSC · Z-Image-Turbo · Qwen 2.5 · LLaVA</p>
         </div>
       </main>
     );
@@ -60,7 +67,7 @@ function HomePageInner() {
           <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #C4823B, #A0522D)' }}>
             <Box className="w-4 h-4 text-white" />
           </div>
-          <span className="font-light tracking-[0.2em] text-sm uppercase" style={{ color: '#5C4A3A' }}>Atelier</span>
+          <span className="font-light tracking-[0.2em] text-sm uppercase" style={{ color: '#5C4A3A' }}>MedForge</span>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => setLangSelected(false)} className="px-3 py-2 rounded-xl text-sm transition-colors" style={{ color: '#8B7355' }}
@@ -80,7 +87,7 @@ function HomePageInner() {
       <div className="relative z-10 max-w-5xl mx-auto px-4 pt-16 sm:pt-28 pb-24 text-center">
         <div className="inline-flex items-center gap-2 px-5 py-2 rounded-full mb-10 text-xs tracking-wide" style={{ background: 'rgba(196,130,59,0.08)', color: '#C4823B', border: '1px solid rgba(196,130,59,0.15)' }}>
           <Star className="w-3.5 h-3.5 fill-current" />
-          {t("AI-Powered 3D Print Design Studio", "AI 驅動的 3D 列印設計工作室")}
+          {t("AI-Powered 3D Print Design Platform · by MDSSC", "AI 驅動的 3D 列印設計平台 · MDSSC")}
         </div>
 
         <h1 className="text-4xl sm:text-6xl lg:text-7xl font-light tracking-tight mb-8 leading-tight" style={{ color: '#2C2416' }}>
@@ -135,7 +142,7 @@ function HomePageInner() {
 
       {/* Footer */}
       <footer className="relative z-10 border-t py-8 text-center" style={{ borderColor: 'rgba(196,130,59,0.08)' }}>
-        <p className="text-xs" style={{ color: '#B8A898' }}>Z-Image-Turbo Q6 · Qwen 2.5 7B · LLaVA 7B · Next.js 16</p>
+        <p className="text-xs" style={{ color: '#B8A898' }}>MDSSC © 2026 · Z-Image-Turbo Q6 · Qwen 2.5 7B · LLaVA 7B · Next.js 16</p>
       </footer>
     </main>
   );

@@ -69,6 +69,6 @@ export async function POST(request: NextRequest) {
         data: { status: "prompt_crafting" },
       }).catch(() => {});
     }
-    return NextResponse.json({ error: "Failed to generate images" }, { status: 500 });
+    return NextResponse.json({ error: `Failed to generate images: ${error instanceof Error ? error.message : String(error)}` }, { status: 500 });
   }
 }

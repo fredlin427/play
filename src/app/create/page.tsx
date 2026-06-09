@@ -21,50 +21,11 @@ import { getMaxRounds } from "@/lib/agents/question-banks";
 import { getSpecPath } from "@/lib/agents/prompt-template";
 import { getCoverage } from "@/lib/agents/coverage";
 import { applyPromptImprovements } from "@/lib/agents/prompt-craft";
+import { readSSEStream } from "@/lib/stream-utils";
+import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
+import { ALL_FIELDS, getField, setField, isRedundantOpt, isFieldFilled } from "@/lib/spec-utils";
+import { useSession, clearSession } from "@/hooks/use-session";
 import { MATERIAL_GUIDE } from "@/lib/agents/material-guide";
-
-const ALL_FIELDS = [
-  {path:"subject.name",zh:"物品名",en:"Name"},
-  {path:"meta.assetType",zh:"類型",en:"Type"},
-  {path:"meta.generationGoal",zh:"目標",en:"Goal"},
-  {path:"meta.style",zh:"風格",en:"Style"},
-  {path:"visual.material",zh:"材質",en:"Material"},
-  {path:"visual.color",zh:"顏色",en:"Color"},
-  {path:"visual.texture",zh:"紋理",en:"Texture"},
-  {path:"visual.finish",zh:"表面",en:"Finish"},
-  {path:"visual.edgeTreatment",zh:"邊緣",en:"Edges"},
-  {path:"dimensions.approximateSize",zh:"尺寸",en:"Size"},
-  {path:"useCase.primaryUse",zh:"用途",en:"Use"},
-  {path:"useCase.environment",zh:"環境",en:"Env"},
-];
-
-function getField(spec: DesignSpec, path: string): string {
-  const parts = path.split(".");
-  let v: unknown = spec;
-  for (const p of parts) v = (v as Record<string,unknown>)?.[p];
-  if (Array.isArray(v)) return (v as string[]).join(", ");
-  return String(v ?? "");
-}
-
-function setField(spec: DesignSpec, path: string, value: string): DesignSpec {
-  const parts = path.split(".");
-  const result = JSON.parse(JSON.stringify(spec));
-  let obj: Record<string,unknown> = result;
-  for (let i=0;i<parts.length-1;i++) obj=obj[parts[i]] as Record<string,unknown>;
-  const last = parts[parts.length-1];
-  obj[last]=value;
-  return result;
-}
-
-const QA_STORAGE_KEY = "qa_session_v1";
-
-// Filter redundant options: user has text input for custom answers + skip button
-function isRedundantOpt(opt: string): boolean {
-  const lower = opt.toLowerCase();
-  return lower === "skip" || lower === "custom" || opt === "跳過" || opt === "自訂"
-      || lower.startsWith("custom ") || opt.startsWith("自訂 ")
-      || lower === "other" || opt === "其他";
-}
 
 /** Shared helper: triggers AI material recommendation and returns question card data */
 async function fetchMaterialRecommendation(spec: DesignSpec, lang: string) {
@@ -73,22 +34,6 @@ async function fetchMaterialRecommendation(spec: DesignSpec, lang: string) {
     body: JSON.stringify({ spec, lang }),
   });
   return res.json();
-}
-
-function loadSession() {
-  try {
-    const raw = localStorage.getItem(QA_STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch {}
-  return null;
-}
-
-function saveSession(data: Record<string, unknown>) {
-  try {
-    localStorage.setItem(QA_STORAGE_KEY, JSON.stringify(data));
-  } catch (e) {
-    console.warn("[Session] Save failed:", String(e).slice(0, 80));
-  }
 }
 
 function CreatePageInner() {
@@ -125,10 +70,13 @@ function CreatePageInner() {
   const [genLoading, setGenLoading] = useState(false);
   const [generatedImages, setGeneratedImages] = useState<Array<{id:string;imageUrl:string;viewLabel?:string}>>([]);
   const [genProgress, setGenProgress] = useState<{current:number;total:number}|null>(null);
-  const [imgWidth, setImgWidth] = useState(1024);
-  const [imgHeight, setImgHeight] = useState(1024);
-  const [imgSteps, setImgSteps] = useState(12);
-  const [editingField, setEditingField] = useState<string | null>(null); // inline field edit
+  const [imgWidth, setImgWidth] = useState(512);
+  const [imgHeight, setImgHeight] = useState(512);
+  const [imgSteps, setImgSteps] = useState(8);
+  const [editingField, setEditingField] = useState<string | null>(null);
+  // Prompt version history: { id, positive, negative, label, time }
+  const [promptVersions, setPromptVersions] = useState<Array<{id:string;positive:string;negative:string;label:string;time:number}>>([]);
+  const [showVersions, setShowVersions] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [analyzeLoading, setAnalyzeLoading] = useState(false);
   const [visionFeedback, setVisionFeedback] = useState<any>(null);
@@ -146,6 +94,13 @@ function CreatePageInner() {
 
   const cl = convLang || toggleLang;
   const searchParams = useSearchParams();
+  const [_hydrated, sessionData, saveSession] = useSession();
+
+  // Record a prompt version for history
+  const recordVersion = (positive: string, negative: string, label: string) => {
+    if (!positive) return;
+    setPromptVersions(prev => [...prev, { id: Date.now().toString(36), positive, negative, label, time: Date.now() }]);
+  };
 
   const questionRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef(false);
@@ -159,16 +114,15 @@ function CreatePageInner() {
 
   // Hydrate from localStorage on mount (client-only — avoids SSR mismatch)
   useEffect(() => {
-    const saved = loadSession();
-    if (saved) {
-      if (saved.pid) setPid(saved.pid);
-      if (saved.convLang) setConvLang(saved.convLang);
-      if (saved.msgs?.length) setMsgs(saved.msgs);
-      if (saved.spec) setSpec(saved.spec);
-      if (saved.specReady) setSpecReady(saved.specReady);
+    if (sessionData) {
+      if (sessionData.pid) setPid(sessionData.pid as string);
+      if (sessionData.convLang) setConvLang(sessionData.convLang as "zh"|"en");
+      if ((sessionData.msgs as unknown[] | undefined)?.length) setMsgs(sessionData.msgs as Array<{role:"user"|"ai";text:string}>);
+      if (sessionData.spec) setSpec(sessionData.spec as DesignSpec);
+      if (sessionData.specReady) setSpecReady(sessionData.specReady as boolean);
     }
     setHydrated(true);
-  }, []);
+  }, []); // Only on mount — sessionData is stable after first read
 
   // Load existing project from URL ?project=id (reopen from dashboard)
   useEffect(() => {
@@ -195,7 +149,7 @@ function CreatePageInner() {
   useEffect(() => {
     if (!hydrated) return; // Don't save before hydration is complete
     saveSession({ pid, convLang, msgs, spec, specReady, result });
-  }, [pid, convLang, msgs, spec, specReady, result, hydrated]);
+  }, [pid, convLang, msgs, spec, specReady, result, hydrated, saveSession]);
 
   const updateProgress = (s: DesignSpec) => {
     const cov = getCoverage(s);
@@ -205,7 +159,7 @@ function CreatePageInner() {
   // ══════════════ Reset ══════════════
 
   const handleReset = () => {
-    localStorage.removeItem(QA_STORAGE_KEY);
+    clearSession();
     setInput(""); setLoading(false); setPid(null);
     // Keep language preference on reset
     setMsgs([]); setSpec(EMPTY_SPEC); setSpecReady(false); setShowSpec(false);
@@ -646,32 +600,14 @@ function CreatePageInner() {
       const res = await fetch("/api/prompt/craft/stream", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ spec: craftSpec, projectId: pid }) });
       if (!res.ok) throw new Error(`Stream ${res.status}`);
 
-      const reader = res.body?.getReader();
-      if (!reader) throw new Error("No stream body");
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        // Process complete SSE messages
-        const lines = buffer.split("\n\n");
-        buffer = lines.pop() || "";
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          try {
-            const data = JSON.parse(line.slice(6));
-            if (data.done) {
-              setResult({ id: data.id || "", craftedPrompt: data.positive, negativePrompt: data.negative || "" });
-            } else if (data.token) {
-              setResult(prev => prev ? { ...prev, craftedPrompt: data.full } : { id: "", craftedPrompt: data.full, negativePrompt: "" });
-            }
-          } catch (e) {
-            console.warn("[Craft] SSE parse error:", String(e).slice(0, 40));
-          }
+      await readSSEStream(res, (data) => {
+        if (data.done) {
+          setResult({ id: data.id as string || "", craftedPrompt: data.positive as string, negativePrompt: (data.negative as string) || "" });
+          recordVersion(data.positive as string, (data.negative as string) || "", cl==="zh"?"初始版本":"Initial");
+        } else if (data.token) {
+          setResult(prev => prev ? { ...prev, craftedPrompt: data.full as string } : { id: "", craftedPrompt: data.full as string, negativePrompt: "" });
         }
-      }
+      });
     } catch (err: any) { setError(`Craft: ${err.message||String(err)}`); setErrorRetry(()=>handleCraft); }
     finally { setLoading(false); }
   };
@@ -687,28 +623,15 @@ function CreatePageInner() {
     try {
       const res = await fetch("/api/prompt/craft/stream", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ spec: iterSpec, projectId: pid, existingPrompt: result.craftedPrompt, feedback: feedback.trim() }) });
       if (!res.ok) throw new Error(`Stream ${res.status}`);
-      const reader = res.body?.getReader();
-      if (!reader) throw new Error("No stream");
-      const decoder = new TextDecoder();
-      let buffer = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n\n");
-        buffer = lines.pop() || "";
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          try {
-            const data = JSON.parse(line.slice(6));
-            if (data.done) {
-              setResult({ id: data.id || "", craftedPrompt: data.positive, negativePrompt: data.negative || "" });
-            } else if (data.token) {
-              setResult(prev => prev ? { ...prev, craftedPrompt: data.full } : { id: "", craftedPrompt: data.full, negativePrompt: "" });
-            }
-          } catch { /* skip */ }
+
+      await readSSEStream(res, (data) => {
+        if (data.done) {
+          setResult({ id: (data.id as string) || "", craftedPrompt: data.positive as string, negativePrompt: (data.negative as string) || "" });
+          recordVersion(data.positive as string, (data.negative as string) || "", cl==="zh"?"文字修改":"Text edit");
+        } else if (data.token) {
+          setResult(prev => prev ? { ...prev, craftedPrompt: data.full as string } : { id: "", craftedPrompt: data.full as string, negativePrompt: "" });
         }
-      }
+      });
       setFeedback("");
       setMsgs(prev=>[...prev,{role:"ai",text:cl==="zh"?"✨ 已根據意見更新提示詞":"✨ Prompt updated based on your feedback"}]);
     } catch (err: any) { setError(`Iterate: ${err.message||String(err)}`); setErrorRetry(()=>handleIterate); }
@@ -767,6 +690,7 @@ function CreatePageInner() {
     // Update result with improved prompt
     const newResult = { ...result, craftedPrompt: improvedPrompt, id: versionId };
     setResult(newResult);
+    recordVersion(improvedPrompt, result.negativePrompt, cl==="zh"?"AI 分析修正":"AI analysis fix");
     setVisionFeedback(null);
     setFeedback("");
 
@@ -827,6 +751,7 @@ function CreatePageInner() {
 
       if (data.improvedPositive && data.improvedPositive !== result.craftedPrompt) {
         setResult(prev => prev ? { ...prev, craftedPrompt: data.improvedPositive, negativePrompt: data.improvedNegative || prev.negativePrompt } : null);
+        recordVersion(data.improvedPositive, data.improvedNegative || result.negativePrompt, cl==="zh"?"畫筆標記":"Drawing edit");
         setMsgs(prev=>[...prev,{role:"ai",text:cl==="zh"
           ? `✏️ 已根據你的標記更新提示詞：${(data.changes||[]).join("; ") || "已套用變更"}`
           : `✏️ Updated prompt based on your annotations: ${(data.changes||[]).join("; ") || "changes applied"}`}]);
@@ -898,8 +823,10 @@ function CreatePageInner() {
     {key:"model" as const,icon:Box,zh:"3D檔案",en:"3D File"},
   ];
 
+  if (!hydrated) return <div className="min-h-screen" style={{ background: '#FDF8F3' }} />;
+
   return (
-    <div className="min-h-screen bg-gradient-to-br bg-[#FDF8F3]">
+    <div className="min-h-screen" style={{ background: '#FDF8F3' }}>
       {/* Header — refined with subtle shadow */}
       <header className="bg-[#FDF8F3]/80 backdrop-blur-sm border-b border-[#E8D5C4] sticky top-0 z-10 shadow-sm">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-4">
@@ -908,7 +835,8 @@ function CreatePageInner() {
             <Plus className="w-4 h-4 mr-1"/>{t("New","新專案")}
           </Button>
           <h1 className="text-lg font-semibold bg-gradient-to-r from-[#A0522D] to-[#B86945] bg-clip-text text-transparent">
-            {t("AI Design Studio","AI 設計工作室")}
+            {t("AI Design Platform","AI 設計平台")}
+            <span className="text-[10px] px-2 py-0.5 rounded-full" style={{color:'#B8A898',background:'rgba(196,130,59,0.06)'}}>MDSSC</span>
           </h1>
           <div className="flex-1"/>
           <div className="flex items-center gap-2 text-xs text-[#B8A898]">
@@ -1353,11 +1281,63 @@ function CreatePageInner() {
                       <Sparkles className="w-4 h-4 text-[#C4823B]"/>
                       <span className="bg-gradient-to-r from-[#A0522D] to-[#B86945] bg-clip-text text-transparent font-bold">SD Prompt</span>
                     </CardTitle>
-                    <Button variant="ghost" size="sm" onClick={()=>{navigator.clipboard.writeText(result.craftedPrompt);setCopied(true);setTimeout(()=>setCopied(false),2000);}}
-                      className="rounded-xl text-xs text-[#B8A898] hover:text-[#C4823B]">
-                      {copied?<><Check className="w-3.5 h-3.5 text-emerald-500"/> {t("Copied","已複製")}</>:<><Copy className="w-3.5 h-3.5"/> {t("Copy","複製")}</>}
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      {promptVersions.length > 1 && (
+                        <Button variant="ghost" size="sm" onClick={() => setShowVersions(!showVersions)}
+                          className="rounded-xl text-xs text-[#B8A898] hover:text-[#C4823B]">
+                          {t(`Versions (${promptVersions.length})`,`版本 (${promptVersions.length})`)}
+                        </Button>
+                      )}
+                      <Button variant="ghost" size="sm" onClick={()=>{navigator.clipboard.writeText(result.craftedPrompt);setCopied(true);setTimeout(()=>setCopied(false),2000);}}
+                        className="rounded-xl text-xs text-[#B8A898] hover:text-[#C4823B]">
+                        {copied?<><Check className="w-3.5 h-3.5 text-emerald-500"/> {t("Copied","已複製")}</>:<><Copy className="w-3.5 h-3.5"/> {t("Copy","複製")}</>}
+                      </Button>
+                    </div>
                   </div>
+
+                  {/* Version history panel */}
+                  {showVersions && promptVersions.length > 1 && (
+                    <div className="space-y-2 pb-3 border-b border-[#E8D5C4]">
+                      <p className="text-[10px] font-medium" style={{color:'#8B7355'}}>{t("Version History","版本歷史")}</p>
+                      <div className="space-y-1 max-h-48 overflow-y-auto">
+                        {[...promptVersions].reverse().map((v, i) => {
+                          const isCurrent = v.positive === result.craftedPrompt;
+                          const prev = [...promptVersions].reverse()[i + 1];
+                          // Simple diff: compare lengths and first difference
+                          let diff = "";
+                          if (prev && prev.positive !== v.positive) {
+                            const added = v.positive.length - prev.positive.length;
+                            diff = added > 0 ? `+${Math.abs(added)} chars` : added < 0 ? `${added} chars` : "modified";
+                          }
+                          return (
+                            <div key={v.id} className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs transition-all ${
+                              isCurrent ? "bg-[#FBF4EC] border border-[#E8D5C4]" : "hover:bg-[#FBF4EC] cursor-pointer"
+                            }`}
+                              style={{ color: isCurrent ? '#C4823B' : '#8B7355' }}
+                              onClick={() => {
+                                if (!isCurrent) {
+                                  setResult(prev => prev ? { ...prev, craftedPrompt: v.positive, negativePrompt: v.negative } : null);
+                                }
+                              }}>
+                              <span className="w-2 h-2 rounded-full shrink-0" style={{background: isCurrent ? '#C4823B' : '#D4B896'}} />
+                              <span className="flex-1 font-medium truncate">{v.label}</span>
+                              <span className="text-[10px]" style={{color:'#B8A898'}}>{new Date(v.time).toLocaleTimeString()}</span>
+                              {diff && <span className="text-[10px] shrink-0" style={{color: diff.startsWith('+') ? '#7B9E6D' : '#c86450'}}>{diff}</span>}
+                              {!isCurrent && (
+                                <button className="text-[10px] px-2 py-0.5 rounded-lg shrink-0 transition-colors"
+                                  style={{background:'rgba(196,130,59,0.1)', color:'#C4823B'}}
+                                  onClick={(e) => { e.stopPropagation();
+                                    setResult(prev => prev ? { ...prev, craftedPrompt: v.positive, negativePrompt: v.negative } : null);
+                                  }}>
+                                  {t("Restore","還原")}
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Generated image previews */}
                   {generatedImages.length > 0 && (
@@ -1492,5 +1472,5 @@ function CreatePageInner() {
 }
 
 export default function CreatePage() {
-  return <LangProvider><Suspense fallback={<div className="min-h-screen" style={{background:"#FDF8F3"}} />}><CreatePageInner/></Suspense></LangProvider>;
+  return <LangProvider><ErrorBoundary><Suspense fallback={<div className="min-h-screen" style={{background:"#FDF8F3"}} />}><CreatePageInner/></Suspense></ErrorBoundary></LangProvider>;
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
 import type { Lang } from "@/lib/i18n";
 
 type LangContextType = {
@@ -13,9 +13,11 @@ type LangContextType = {
 const LangContext = createContext<LangContextType | null>(null);
 
 export function LangProvider({ children }: { children: ReactNode }) {
-  const [lang, setLang] = useState<Lang>(
-    typeof window !== "undefined" && navigator.language.startsWith("zh") ? "zh" : "en"
-  );
+  const [lang, setLang] = useState<Lang>("en");
+
+  useEffect(() => {
+    if (navigator.language.startsWith("zh")) setLang("zh");
+  }, []);
 
   const toggleLang = () => setLang(lang === "zh" ? "en" : "zh");
   const t = (en: string, zh: string) => (lang === "zh" ? zh : en);
